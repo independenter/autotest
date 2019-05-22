@@ -1,0 +1,263 @@
+#!/usr/bin/env python
+# -*- coding:utf-8 -*-
+# Author:donghui
+
+import configparser,time
+from selenium import webdriver
+from selenium.webdriver import ActionChains
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.select import Select
+from selenium.webdriver.support.wait import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+from selenium.webdriver.remote.webelement import WebElement
+from selenium.common.exceptions import TimeoutException
+
+#解析配置
+configparser = configparser.ConfigParser()
+configparser.read("conf.ini",encoding='utf8')
+config = {}
+for section in configparser.sections():
+    sectionStr={}
+    config[section] = sectionStr
+    for option in configparser.options(section):
+        sectionStr[option] = configparser.get(section,option)
+
+driver_type = config['driver']['driver']
+driver_position = config['driver']['driver_path']+'\chromedriver.exe'
+driver_env = config['driver']['driver_user_dir']
+
+chrome_options = webdriver.ChromeOptions()
+chrome_options.add_argument("start-maximized");
+chrome_options.add_argument('--user-data-dir=' + driver_env)
+try:
+    driver = webdriver.Chrome(executable_path=driver_position,chrome_options=chrome_options)
+    wait = WebDriverWait(driver, 60)
+    pass
+except Exception as e:
+    pass
+finally:
+    pass
+
+def isEmpty(str):
+    if len(str) <= 0 or str=="" or str==None:
+        return True
+    return False
+
+def sleep(seconds):
+    time.sleep(seconds)
+
+def open(url):
+    driver.get(url);
+    #driver.close() #新窗口打开旧的会自动关闭
+
+def close():
+    sleep(10000)
+    driver.quit()
+
+def switch_to_frame(input,type="ele",message='切换frame超时'):  #no such frame  sleep(1)
+    end_time = time.time() + 3
+    screen = None
+    stacktrace = None
+    while True:
+        if isinstance(input,WebElement):
+            driver.switch_to.frame(input)
+            return
+        else:
+            value = WebDriverWait(driver,1).until(lambda x:x.find_element_by_id(input),message='切换'+input+'超时')
+            value1 = WebDriverWait(driver,1).until(lambda x:x.find_element_by_name(input),message='切换'+input+'超时')
+            if value or value1:
+                if type == "ele":
+                    driver.switch_to.frame(input)  # Button("navframe_def",type="id").element
+                else:
+                    driver.switch_to.frame(input)
+                return
+        if time.time() > end_time:
+            break
+    raise TimeoutException(message, screen, stacktrace)
+
+
+def switch_default_content():
+    driver.switch_to.default_content()
+
+def switch_to_windows(handler):
+    driver.switch_to.window(handler)
+
+def maximize_window():
+    driver.maximize_window()
+
+class Alert(object):
+    def __init__(self):
+        self.alert = driver.switch_to.alert()
+    def accept(self):
+        self.alert.accept()  #等同于点击“确认”或“OK”'
+    def dismiss(self):
+        self.alert.dismiss()  #'等同于点击“取消”或“Cancel”'
+    def text(self):
+        self.alert.text  #'获取alert文本内容，对有信息显示的alert框'
+    def send_keys(self,text):
+        self.alert.send_keys(text)  #'发送文本，对有提交需求的prompt框'
+    def authenticate(self,username,password):
+        self.alert.authenticate(username,password) #'验证，针对需要身份验证的alert'
+
+class Button(object):
+    def __init__(self,selector,type="xpath"):
+        self.driver = driver
+        self.initElement(selector,type)
+        self.selector = selector
+
+    def initElement(self,selector,type):
+        if type=="id":
+            #self.element = self.driver.find_element_by_id(selector);
+            self.element = wait.until(lambda x: x.find_element_by_id(selector),message='定位'+selector+'元素超时')
+        elif type=="class":
+            self.element = wait.until(lambda x: x.find_element_by_class_name(selector),message='定位'+selector+'元素超时')
+        elif type=="css":
+            self.element = wait.until(lambda x: x.find_element_by_css_selector(selector),message='定位'+selector+'元素超时');
+        elif type == "tag":
+            self.element = wait.until(lambda x: x.find_element_by_tag_name(selector),message='定位'+selector+'元素超时');
+        elif type == "xpath":
+            self.element = wait.until(lambda x: x.find_element_by_xpath(selector),message='定位'+selector+'元素超时');
+        elif type == "name":
+            self.element = wait.until(lambda x: x.find_element_by_name(selector),message='定位'+selector+'元素超时');
+        else:
+            self.element = wait.until(lambda x: x.find_elements_by_xpath(selector),message='定位'+selector+'元素超时')
+
+    def clear(self):
+        self.element.clear()
+    def input(self,input):
+        self.clear()
+        self.element.send_keys(input)
+    def click(self):
+        self.element.click()
+    def double_click(self):
+        action = ActionChains(self.driver)
+        action.double_click(self.element).perform();
+    def submit(self):
+        self.element.submit()
+    def isSelected(self):
+        return self.element.is_selected()
+    def isEnabled(self):
+        return self.element.is_enabled()
+    def isDisplay(self):
+        return self.element.is_displayed()
+    def text(self):
+        return self.element.text;
+    def attr(self,name):
+        return self.element.get_attribute(name)
+    def property(self,name):
+        return self.element.get_property(name)
+    def checked(self):
+        self.element.send_keys(Keys.SPACE) #点击复选框 单选框
+    def select(self,input,type='index'):  #下拉选
+        selector = Select(self.element)
+        if type=="index":
+            selector.select_by_index(input)
+        elif type=="value":
+            selector.select_by_value(input)
+        elif type=="text":
+            selector.select_by_visible_text(input)
+
+    def deselect(self,input,type='index'):  #下拉选
+        selector = Select(self.element)
+        if type=="index":
+            selector.deselect_by_index(input)
+        elif type=="value":
+            selector.deselect_by_value(input)
+        elif type=="text":
+            selector.deselect_by_visible_text(input)
+        else:
+            selector.deselect_all()
+
+#查询营销活动
+def saleactive_qry():
+    # 登陆
+    if driver.current_url.find('chrome') < 0:
+        switch_default_content()
+        Button('//*[@id="tab_ct_ul"]/li/div[@class="fn"]/div[3]', type='xpath').click()  # 关闭页面
+    else:
+        open("http://10.135.204.227:9090/ngboss")
+        Button("STAFF_ID", type="id").input("SUPERUSR")
+        Button("STAFF_PWD", type="id").input("lc")
+        Button("login_btn", type="id").click()
+
+    # 点击到测试界面 有个iframe
+    switch_default_content()
+    switch_to_frame("navframe_def")
+    Button('#UI-tab > li:nth-child(3)', type='css').click()  # 更多 这是一个蒙面元素，有时会出现不可点击，可用sleep处理
+    Button('//*[@id="navSubsysList"]/div/ul/li[1]', type='xpath').click()  # CRM
+    Button('//*[@id="navMenu_L1_NCM"]/div/ul/li[1]', type='xpath').click()  # 个人业务
+    Button('//*[@id="navMenu_L2_crm9000"]/div/ul/li[4]', type='xpath').click()  # 开户业务
+    Button('#crm9325 > .main', type='css').click()  # 测试界面
+
+    # 测试界面逻辑运行
+    switch_default_content()
+    switch_to_frame(Button("navframe_71", type="id").element)
+    Button('SERIAL_NUMBER', type='id').input("18706895777")
+    Button('query_BTN', type='id').click()
+
+    # 关闭浏览器
+    # sleep(10)
+    # close()
+
+#营销活动受理
+def saleactive_reg():
+    # 登陆
+    if driver.current_url.find('chrome') < 0:
+        switch_default_content()
+        Button('//*[@id="tab_ct_ul"]/li/div[@class="fn"]/div[3]', type='xpath').click()  # 关闭页面
+    else:
+        open("http://10.135.204.227:9090/ngboss")
+        Button("STAFF_ID", type="id").input("SUPERUSR")
+        Button("STAFF_PWD", type="id").input("lc")
+        Button("login_btn", type="id").click()
+
+    # 点击到测试界面 有个iframe
+    switch_default_content()
+    switch_to_frame("navframe_def")
+    Button('#UI-tab > li:nth-child(3)', type='css').click()  # 更多
+    Button('//*[@id="navSubsysList"]/div/ul/li[1]', type='xpath').click()  # CRM
+    Button('//*[@id="navMenu_L1_NCM"]/div/ul/li[1]', type='xpath').click()  # 个人业务
+    Button('//*[@id="navMenu_L2_crm9000"]/div/ul/li[4]', type='xpath').click()  # 开户业务
+    Button('#crm9321 > .main', type='css').click()  # 营销活动受理界面
+
+    # 测试界面逻辑运行
+    switch_default_content()
+    switch_to_frame(Button('navframe_81', type="id").element)
+    Button('AUTH_SERIAL_NUMBER', type='id').input("18706895777")
+    Button('AUTH_SUBMIT_BTN', type='id').click()
+    switch_default_content()
+    switch_to_frame(Button('navframe_81', type="id").element) #加载完成后页面进行了一次刷新，需要重新获得dom
+    sleep(10)
+    Button('SALE_CAMPN_TYPE', type='id').select("YUCN",type="value")
+    # elements = driver.find_element_by_id("SALE_CAMPN_TYPE").find_elements_by_tag_name("option")
+    # elements[3].click()
+
+
+    # select.select_by_visible_text('预存营销')
+
+    ##Button('SALE_CAMPN_TYPE', type='id').select('YUCN',type='value') #活动类型
+    # Button('SALE_PRODUCT_ID', type='id').select(1)#营销方案
+    # Button('SALE_ACTIVE_QRY_BTN', type='id').click()
+    # Button('69900002_69932501', type='id').click()#营销活动
+    # Button('CSSUBMIT_BUTTON', type='id').click() #提交
+
+    # 关闭浏览器
+    # sleep(10)
+    # close()
+
+
+if __name__=='__main__':
+    start = time.clock()
+    try:
+        saleactive_qry()
+        print("营销活动综合查询:本次测试案例用时%.2fs" % (time.clock() - start))
+        start = time.clock()
+        saleactive_reg()
+        print("营销活动受理:本次测试案例用时%.2fs" % (time.clock() - start))
+    except Exception as e:
+        print(e)
+    finally:
+        close()
+        quit()  #会退出驱动
+

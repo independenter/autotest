@@ -1,0 +1,647 @@
+var activeFnTag = "cust";
+var activeFnIdx = 0;
+var fnParts = {cust: "LoginPart", group: "m_group", favo: "m_favo", notice: "m_notice",  ambu: null, wiki:null,like: null,menu: "m_menu"};
+
+$.sidebar = {
+	init : function(){
+	$("#m_fn_ul li").each(function(idx){
+			$.attr(this, "idx", idx);
+		});
+		$("#m_fn_ul").tap($.sidebar.events.onFnTapClick);
+				
+	/*
+		$("#m_home").tap(function(){
+			var partId = fnParts[activeFnTag];
+			if(partId){
+				//$("#m_fn_ul li[idx=" + activeFnIdx + "]").removeClass("on");
+				//$("#" + partId).css("display", "none");
+				var className = document.documentElement.className ? document.documentElement.className : "";
+				if(className.indexOf("s_noside") == 0){
+					//document.documentElement.className = className + " s_noside";
+				}
+				//activeFnIdx = -1;
+			}
+			$.navtabset.switchToDefNav();
+		});
+		*/
+
+		$("#m_home").tap(function(){
+			$.navtabset.switchToDefNav();
+		});
+		
+		var partId = fnParts[activeFnTag];
+		$("#m_fn_ul li[idx=" + activeFnIdx + "]").addClass("on");
+		$("#" + partId).css("display", "");
+		$(document.documentElement).removeClass("s_noside");
+		$(document.body).bind("mousedown",function(e){
+			e = e.target;
+			while(e){
+				if(e.nodeName=="BODY"){
+					break;
+				}
+				var eid = $.attr(e, "id");
+				if(eid=="menuContextMenu"){
+					return true;
+				}
+				e = e.parentNode;
+			}
+			if($("#menuContextMenu").css("display")!="none"){
+				$("#menuContextMenu").css("display","none");
+				$("#mainCover").css("display","none");
+			}
+			return true;
+		});
+	},
+	checkStaffPwd:function(){
+		setTimeout(function(){
+			$.ajax.submit(null,"checkStaffPwd", null, null, function(data){
+				if(data && data.get("REMINDER_TAG")=="1"){
+					var info = data.get("RESULT_MSG");
+					if(info < 10){
+						$.MessageBox.confirm("提示","距密码过期还有"+info+"天，请及时修改密码！",function(re){
+							if(re=="ok"){
+								//$.menuopener.openMenu("", "员工密码自助重置", "/commonbusinesscentre/commonbusinesscentre?service=page/secframe.bs.securitymgt.SafetyQuestionMgt&listener=init");
+							}
+						});
+					}
+				}
+			}, function(error_code,error_info,detail){
+				$.MessageBox.error(error_info);
+			});
+		},2000);
+	},
+	/*
+	navAction:function(){
+		$('#helpNavPerson').css('display','none');
+		$.ajax.submit(null, "tipAction", "&operType=0", null, null, null);
+	},
+	*/
+	msgAction:function(){
+		$('#UI-release').css('display','none');
+		if($('#msgnoshow').attr('checked')){
+			$.ajax.submit(null, "tipAction", "&operType=1", null, null, null);
+		}
+	},
+	tipAction:function(content){
+		$('#searchTipContent').text(content);
+		$('#searchTip').css('display','');
+		setTimeout(function(){
+			$('#searchTip').css('display','none');
+		},5000);
+	},
+	//删除收藏菜单
+	deleteCollect:function(e,favId){
+		
+		ajaxSubmit(null,'deleteCollect','&favId='+favId,null,
+		function(){
+			$(e).parent().remove();
+		},
+		function(error_code,error_info,detail){
+			MessageBox.error('错误信息',error_info);
+		});
+	},
+	freshFavMenu:function(){
+		ajaxSubmit(null, 'getCollectMenu', null, 'favo_pages', function(){
+			var idx = $("#favo_tabs li[class=on]").attr("idx");
+			$($("#favo_pages").children()[0]).css("display","");
+		},function(error_code,error_info,detail){
+			$.MessageBox.error("获取数据失败", error_info,null,null,detail);
+		});
+    },
+	events : {
+		bindDocument: function(){
+			var oldTime = top["USER_NO_OPERATE_PERIOD"];
+			if(!oldTime) return;
+			top["USER_NO_OPERATE_PERIOD"] = new Date().getTime();
+		},
+		
+		onIframeLoad:function(e){
+			$("#"+e.data).data("loaded",true);
+			$(window.frames[e.data].document).bind("click", $.sidebar.events.bindDocument);
+		},
+		
+		onIframeReadyStateChange_IE:function(e){
+			if(this.readyState=="complete"){
+				$("#"+e.data).data("loaded",true);
+				$(window.frames[e.data].document).bind("click", $.sidebar.events.bindDocument);
+			}
+		},
+		
+		onFnTapClick : function(e){
+			var el = e.target;
+			
+			if(!el || !el.nodeType || !$.nodeName(el, "li"))
+				return;
+			
+			var tag = $.attr(el, "tag");
+			var idx = $.attr(el, "idx");
+			var partId = fnParts[activeFnTag];
+			if(idx == activeFnIdx) {
+				$("#m_fn_ul li[idx=" + activeFnIdx + "]").removeClass("on");
+				$("#" + partId).css("display", "none");
+				$(document.documentElement).addClass("s_noside");
+				activeFnIdx = -1;
+				return;
+			}
+			if(tag == "favo_btn"){
+				popupDialog('用户体验评价', 'EvaluationInfo', 'initTrade', '&MENU_ID=icrm910', null, 35, 15, true);
+			}
+			
+			if(tag == "notice"){
+				setTimeout(function(){
+					if(window.noticeUnreadScroller){
+						window.noticeUnreadScroller.refresh();
+					}
+					if(window.noticeReadedScroller){
+						window.noticeReadedScroller.refresh();
+					}
+				}, 100);
+			}
+
+			partId = fnParts[tag];
+			if(partId){
+				$("#" + fnParts[activeFnTag]).css("display", "none");
+				$("#" + partId).css("display", "");
+				$(document.documentElement).removeClass("s_noside");
+				if(partId=="m_menu") m_menu.refresh();
+				$("#m_fn_ul li[idx=" + activeFnIdx + "]").removeClass("on");
+				$("#m_fn_ul li[idx=" + idx + "]").addClass("on");
+				activeFnTag = tag;
+				activeFnIdx = idx;
+				if($.browser.msie) $("#m_fn_ul").html($("#m_fn_ul").html()); // ie8功能区图标
+			}else{
+				//document.documentElement.className = "s_noside";
+			}
+		},
+		showFn:function(tag){
+			var curE = $("#m_fn_ul li[idx=" + activeFnIdx + "]");
+			if(curE && curE.attr("tag")==tag){
+				return ;
+			}
+			var partId = fnParts[tag];
+			if(curE && partId){
+				curE.removeClass("on");
+				$("#" + fnParts[activeFnTag]).css("display", "none");			
+			}
+			if(partId){
+				$("#m_fn_ul li[tag=" + tag + "]").addClass("on");
+				$("#" + partId).css("display", "");
+				$(document.documentElement).removeClass("s_noside");
+				
+				activeFnTag = tag;
+				activeFnIdx = $("#m_fn_ul li[tag=" + tag + "]").attr("idx");
+			}
+		},
+		hideFn:function(){
+			var curE = $("#m_fn_ul li[idx=" + activeFnIdx + "]");
+			if(curE){
+				curE.removeClass("on");
+				$("#" + fnParts[curE.attr("tag")]).css("display", "none");			
+			}
+			$(document.documentElement).addClass("s_noside");
+			activeFnIdx=-1;
+		}
+		},
+		/*
+		onFnTapClick : function(e){
+			var el = e.target;
+			if(!el || !el.nodeType || !$.nodeName(el, "li"))
+				return;
+			
+			var tag = $.attr(el, "tag");
+			var idx = $.attr(el, "idx");
+			var partId = fnParts[activeFnTag];
+			if(idx == activeFnIdx) {
+				$("#m_fn_ul li[idx=" + activeFnIdx + "]").removeClass("on");
+				$("#" + partId).css("display", "none");
+				$.sidebar.addAndRemoveClass(true);
+				activeFnIdx = -1;
+				return;
+			}
+			
+			if(partId){
+				$("#" + partId).css("display", "none");
+			}
+			
+			partId = fnParts[tag];
+			if(partId){
+				$("#" + partId).css("display", "");
+				$.sidebar.addAndRemoveClass(false);
+			}else{
+				$.sidebar.addAndRemoveClass(true);
+			}
+			
+			$("#m_fn_ul li[idx=" + activeFnIdx + "]").removeClass("on");
+			$("#m_fn_ul li[idx=" + idx + "]").addClass("on");
+			
+			activeFnTag = tag;
+			activeFnIdx = idx;
+		}
+	},
+	*/
+	addAndRemoveClass: function(flag){
+		var className = document.documentElement.className ? document.documentElement.className : "";
+		if(className.indexOf("s_noside") > -1 && !flag){
+			className = (" " + className + " ").replace(/ s_noside /ig, " ");
+			className = className.replace(/^(\s|\u00A0)+|(\s|\u00A0)+$/g, "");
+			document.documentElement.className = className;
+		}
+		else if(className.indexOf("s_noside") == -1)
+		{
+			document.documentElement.className = className + " s_noside";
+		}
+	}
+};
+
+
+/*
+function logout(){
+	$.ajax.get("Home", "logout", null, null, function(){
+		$.redirect.toPage("Home");
+	},function(code, msg){
+		alert(msg);
+	});
+}
+*/
+
+$.forceLogout = {
+	doit: function(content){
+		MessageBox.show({
+			error : true,
+			msg : "您已经被强制下线",
+			content : (content ? content : "您已经被强制下线,请与系统管理人员联系"),
+			buttons : {"cancel" : "关闭"},
+			fn : function(btn){
+				
+			},
+			beforeHide : function(btn){
+				$.ajax.get("Home", "logout", null, null, function(){
+					$.redirect.toPage("Logout");
+				},function(code, msg){
+					$.redirect.toPage("Logout");
+				},{async:false});
+			}
+		});
+	}
+};
+//退出按钮事件
+var doUnloadLogout=true;
+function logout(){
+	MessageBox.confirm("确认退出系统么", null, function(btn){
+		if(btn == "ok"){
+			var subsys = $("#nav_subsys_list li[class=on]").attr("code");
+			$.ajax.get("Logout","logout","&SUBSYS_CODE=" + (subsys?subsys:""),null,function(){
+				if(frame_isdebug){	 //开发模式 跳转
+				 	$.redirect.toPage("Home","","");
+				}else{    //否则关闭
+					//alert("感谢您的使用！");
+				 	try{
+				 		window.doUnloadLogout = false;
+						window.opener=null;
+						window.open('','_self','');
+						window.close(); 
+						parent.window.opener = null;
+						parent.window.open("", "_self");
+						parent.window.close();
+					}catch(ex){
+						window.doUnloadLogout = true;
+					}	
+				}
+			},function(){
+				try{
+					window.doUnloadLogout = false;
+					parent.window.opener = null;
+					parent.window.open("", "_self");
+					parent.window.close();
+					window.location.href = 'about:blank'; //chrome & other
+				}catch(ex){
+					window.doUnloadLogout = true;
+				}
+			 },{async:false});
+		}
+	});
+}
+
+$.shortcut = {
+	init: function(){
+		$("#m_shortcut li[addr]").bind("click", $.shortcut.onClick);
+	},
+	open: function(menuId, title, addr, path){
+		$.menuopener.openMenu(menuId, title, addr);
+	},
+	onClick: function(e){
+		var el = e.target;
+		if(!el || !el.nodeType)
+			return;
+		if( $.nodeName(el, "span") )
+			el = el.parentNode;
+		
+		var menuId = $.attr(el, "menuId");
+		var title = $.attr(el, "title");
+		var addr = $.attr(el, "addr");
+		
+		if(!title) title = $.attr(el, "tip");
+		if(title){
+			title = ("" + title).split("，")[0];
+		}
+		$.shortcut.open(menuId, title, addr);
+	}
+};
+
+$.activator = {
+	interval: null,
+	time: 10 * 60 * 1000,
+	start: function(){
+		if(!this.interval){
+			this.interval = window.setInterval($.activator.action, this.time);
+		}
+	},
+	stop: function(){
+		if(this.interval){
+			window.clearInterval(this.interval);
+			this.interval = null;
+		}
+	},
+	action: function(){
+		$.httphandler.get("com.asiainfo.touchframe.view.handler.VariableHandler", "active", null, null, null, {
+			simple : true,
+			dataType : "text"
+		});
+	}
+};
+
+//截屏
+$.screenShots =function(){
+	try{
+		var ocx=new ActiveXObject("ScreenCapture.CNGSC");
+		var path = ocx.GetScreenImage();
+		if (path != null && path != '') {
+			alert('截图文件:'+path);
+		}
+	} catch(e){
+		alert('未找到截图控件，请在登录首页下载并安装');
+	}
+};
+
+$.lock = {
+	unlocking: false,
+	limit : 3,
+	init: function(){
+		$("#UNLOCK_PASSWORD").keydown($.lock.onPassKeyDown);
+		$("#UNLOCK_BTN").click($.lock.onBtnClick);
+	},
+	show: function(){
+		$("#m_lock").css("display","");
+		$("#UNLOCK_PASSWORD").focus();
+		$.activator.start();
+	},
+	hide: function(){
+		$.activator.stop();
+		$("#m_lock").css("display","none");
+	},
+	onPassKeyDown: function(e){
+		//回车键
+		if(e.keyCode == 13 || e.keyCode == 108){
+			$("#UNLOCK_BTN").trigger("click");
+			return false;
+		}
+	},
+	onBtnClick: function(e){
+		
+		if($.lock.unlocking) return;
+		if($.lock.limit <= 0){
+			alert("已经达到了最大解锁重试次数，请重新登录！");
+			//强制退出
+			logout();
+			return;
+		}
+		var pass = $("#UNLOCK_PASSWORD").val();
+		if(!pass){
+			alert("密码不能为空！");
+			$("#UNLOCK_PASSWORD").focus();
+			return;
+		}
+		$("#UNLOCK_PASSWORD").attr("disabled", true);
+		$("#lock_tip").text("正在校验密码...");
+		$.lock.unlocking = true;
+		$.ajax.submit(null, "unLock", "UNLOCK_PASSWORD=" + $.md5($.md5_3($.fnEncrypt(pass,"00linkage"))), null, function(data){
+			$.lock.unlocking = false;
+			$("#UNLOCK_PASSWORD").val("");
+			$("#UNLOCK_PASSWORD").attr("disabled", "");
+			$("#lock_tip").text("注意：您最多只能尝试解锁3次");
+			$.lock.limit = 3;
+			$.lock.hide();
+		},function(code, info){
+			$.lock.unlocking = false;
+			if($.lock.limit>0)$.lock.limit --;
+			alert(info);
+
+			$("#UNLOCK_PASSWORD").attr("disabled","");
+			$("#lock_tip").text("您还可以尝试解锁" + $.lock.limit + "次");
+			$("#UNLOCK_PASSWORD").select();
+			
+			if("登录已过期，请重新登录！" == info 
+				|| "已经达到了最大解锁重试次数，请重新登录！" == info){
+				$("#UNLOCK_PASSWORD").val("");
+				$("#UNLOCK_PASSWORD").attr("disabled",true);
+				$("#lock_tip").text(info);
+				$.activator.stop();
+			    //强制退出
+			    logout();
+			 }
+		});
+	}
+};
+
+
+function changeCallBack(data){
+	$("#city_btn").text(data.get("eparchyName"));
+	$("#staff_city").text(data.get("eparchyName"));
+}
+
+function changeError(error_code,error_info){
+	$.MessageBox.error("切换登陆地州失败", error_info);
+}
+
+$(document).ready(function(){
+	if(window.ActiveXObject){
+		$("#navframe_def").bind("readystatechange", "navframe_def", $.sidebar.events.onIframeReadyStateChange_IE);
+	}else{
+		$("#navframe_def").bind("load", "navframe_def", $.sidebar.events.onIframeLoad);
+	}
+	$("body").bind("click", $.sidebar.events.bindDocument);
+});
+
+
+
+$(function(){
+	$.sidebar.init();
+	$.shortcut.init();
+	$.lock.init();
+	
+	$("#staff_min").bind("click",function(){
+		$("#staff_max").css("display", "");
+		$("#city_btn").removeClass("city-unfold");
+		//$("#city_choose").css("display", "none");
+	});
+	
+	$("#staff_max").bind("mouseleave",function(){
+		$("#staff_max").css("display", "none");
+	});
+	
+	$("#more_btn").bind("click",function(){
+		$("#staff_max").css("display", "none");
+		$('#menu_btn').trigger('tap');
+	});
+	$("#favo_tabs li").each(function(idx){
+		$.attr(this, "idx", idx);
+	});
+	$("#favo_tabs li").bind("tap",function(e){
+		if($(e.target).hasClass("on")){
+			return ;
+		}
+		var oldIdx = $("#favo_tabs li[class=on]").attr("idx");
+		$("#favo_tabs li[class=on]").removeClass("on");
+		$(e.target).addClass("on");
+		var idx = $(e.target).attr("idx");
+		$($("#favo_pages").children()[oldIdx]).css("display","none");
+		$($("#favo_pages").children()[idx]).css("display","");
+	});
+	
+	//全省工号
+	if($("#isProv").val()=='1'){
+		$("#city_btn").bind("click",function(){
+			var show = $("#city_choose").css("display");
+			if(show=="none"){
+				$("#city_btn").addClass("city-unfold");
+				$("#city_choose").css("display", "");
+			}else{
+				$("#city_btn").removeClass("city-unfold");
+				$("#city_choose").css("display", "none");
+			}
+		});
+		
+		$("#city_choose li").bind("click",function(e){
+			$("#city_btn").removeClass("city-unfold");
+			$("#city_choose").css("display", "none");
+			var eparchyCode = $(e.target).attr("id");
+			var eparchyName = $(e.target).text();
+			if(eparchyCode && eparchyName){
+				$.ajax.submit(null,"changeLoginEparchy", "eparchyCode="+eparchyCode+"&eparchyName="+eparchyName, null, changeCallBack, changeError);
+			}
+		});
+	} else { // 不允许切换提示
+		$("#city_btn").bind("click",function(){
+			$.TipBox.show(document.getElementById('city_btn'), "当前工号不允许切换", "green");
+		})
+	}
+	
+	$("#favo_btn").bind("click",function(e){
+		popupDialog('用户体验评价', 'EvaluationInfo', 'initTrade', '&MENU_ID=icrm910', null, 35, 15, true);
+	});
+	
+	//导入导出日志查询
+     $("#my_impexp").bind("tap",function(e){
+    	 openNav("导入导出日志", "impexp.ImpExp", "init", null,"/basecentre/basecentre");	 
+     });
+    //分布式缓存刷新
+     $("#memCacheFlush").bind("tap",function(e){
+    	 openNav("静态参数缓存", "secframe.op.flushmemcache.FlushMemCache", null,null,"/commonbusinesscentre/commonbusinesscentre");	 
+     });
+     
+    //权限验证
+     $("#privCheck").bind("tap",function(e){
+    	 openNav("权限验证", "ngboss.priv.PrivCheckPage", "init",null,"/ngboss");	 	 
+     });
+     
+     //权限刷新
+     $("#privReload").bind("tap",function(e){
+    	 openNav("权限刷新", "ngboss.priv.PrivLoadPage", "", null,"/ngboss");	 	 
+     });
+     
+   //异常编码维护
+     $("#errCode").bind("tap",function(e){
+    	 openNav("异常编码维护", "secframe.op.errorcode.ErrorCode", null,null,"/commonbusinesscentre/commonbusinesscentre");	 	 
+     });
+   //图标选择
+     $("#iconChoose").bind("tap",function(e){
+    	 openNav("图标选择", "secframe.op.iconchoose.IconChoose", 'init','&centrecode=CommonBusinessCentre',"/commonbusinesscentre/commonbusinesscentre");	 	 
+    });
+   //会话管理
+     $("#monitorses").bind("tap",function(e){
+    	 openNav("会话管理", "secframe.op.monitorses.MonitorSes", null,'&centrecode=CommonBusinessCentre',"/commonbusinesscentre/commonbusinesscentre");	 	 
+    });
+   //会话监控
+     $("#monitormap").bind("tap",function(e){
+    	 openNav("会话监控", "secframe.op.monitorses.MonitorMap", 'init','&centrecode=CommonBusinessCentre',"/commonbusinesscentre/commonbusinesscentre");	 	 
+    });
+    /*
+   //截屏
+    $("#screenShots").bind("tap",function(){
+   	 	try{
+			var ocx=new ActiveXObject("ScreenCapture.CNGSC");
+			var path = ocx.GetScreenImage();
+			if (path != null && path != '') {
+				alert('截图文件位置:'+path);
+			}
+		} catch(e){
+			alert('未找到截图控件，请在登录首页下载并安装');
+			//alert('未找到截图控件，请下载完成后安装，截图控件仅支持IE11(32bit)');
+			//window.open('/static/setup/screenshots.exe','_new_download_win','height=40,width=100,top=0,left=0,toolbar=no,menubar=no,scrollbars=no, resizable=no,location=no, status=no');
+		}
+    });
+    */
+     //收藏菜单显示
+    $("#favoFn").bind("click",$.sidebar.freshFavMenu);
+   
+     
+	$("#m_menu_log").bind("tap",function(){
+		window.open('log.jsp','_new_log_win','height=600,width=1000,top=0,left=0,toolbar=no,menubar=no,scrollbars=no, resizable=no,location=no, status=no');
+	});
+	
+ 
+	//$.sidebar.checkStaffPwd();
+	//$.sidebar.fetchFee(5000);
+/*	
+	if($("#navShow").val() !="1" ){
+		 
+		$('#helpNavPerson').css('display','');
+	}
+*/
+	if($("#msgShow").val() != "1"){
+		$('#UI-release').css('display','');
+	}
+});
+
+
+
+
+
+function hideDetail()
+{
+	return;
+	var detailId = "";
+	var targetId = "";
+ 
+	var layer = document.getElementById(detailId);
+	var button = document.getElementById(targetId);
+	var isIn = (function () {
+		var tempDom = event.target || event.srcElement;
+		while(tempDom != document.body && tempDom != layer && tempDom != button) {
+			tempDom = tempDom.parentNode;
+		}
+		if(tempDom != document.body) {
+			return true;
+		} else {
+			return false;
+		}
+	})();
+	// alert(isIn);
+	if(!isIn)
+	{
+		if(detailId != ""){
+		  $("#"+detailId).removeClass('more-show'); 
+		}
+		$("#detailCover").css("display", "none");
+	}
+}

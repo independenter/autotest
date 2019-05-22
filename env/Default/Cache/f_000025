@@ -1,0 +1,1637 @@
+(function($){
+	$.extend({
+	//提交模块	
+	cssubmit:{
+		componentId : "SubmitPart" ,			//组件ID
+		repeatFlag: false,						//防止重复提交
+		dynamicParams : null,					//动态设置参数
+		dynamicParamData :$.DataMap(),
+		callBackEvent:null,						//提交回调事件
+		customizeBtns:null,						//自定义按钮
+		tradeData: null,						//业务执行返回结果
+		commData:null,							//公用参数
+		//----------购物车
+		clickButton:null,
+		//----------购物车
+		isBizFlow:null,
+		afterSubmitAction:null,
+		
+		orderPayFlag: true, //默认支付成功
+		
+		
+		//增加公共参数
+		addCommonData: function(key, value){
+			$.cssubmit.addPrintData(key, value);
+		},
+		
+		addPrintData:function(key, value){
+			if(!$.cssubmit.commData) $.cssubmit.commData=$.DataMap();
+			$.cssubmit.commData.put(key, value);			
+		},
+		
+		setAfterSubmitAction:function(action){
+			$.cssubmit.afterSubmitAction = action;
+		},
+		getAfterSubmitAction:function(){
+			return $.cssubmit.afterSubmitAction;
+		},
+		
+		clickSubmitButton: function(){
+			$("#CSSUBMIT_BUTTON").click();
+		},
+		
+		/**
+		 * 集团页面流子页面提交
+		 * 
+		 */
+		parentFlowSubmit : function(){
+			
+			var isGrp = $("#CSSUBMIT_BUTTON").attr("isGrp");
+			if("true" != isGrp) return;
+			
+			// 如果是页面流的子页面提交
+			if(parent.getFlow){
+				var flowSubmitData = parent.getFlow().getSubmitData();
+				$.cssubmit.addParam(flowSubmitData);
+				$.cssubmit.bindCallBackEvent($.cssubmit.callBack.grpCallBack);
+			}
+		},
+		
+		//绑定业务提交事件
+		init:function(){
+			$.cssubmit.dynamicParams = "";
+			$.cssubmit.clickButton = "submit";
+			//----------购物车
+			$("#CSSUBMIT_BUTTON").bind("click", "submit", $.cssubmit.bindFucntion);
+			$("#ADD_SHOPPING_CART").bind("click", "addShoppingCart", $.cssubmit.bindFucntion);
+			$("#CSRESET_BUTTON").bind("click", $.cssubmit.resetTrade);
+			//是否禁用提交按钮
+			var disabled = $("#CSSUBMIT_BUTTON").attr("disabledBtn") == "true"? true : false;
+			$.cssubmit.disabledSubmitBtn(disabled,"submitButton");
+			disabled = $("#ADD_SHOPPING_CART").attr("disabledBtn") == "true"? true : false;
+			$.cssubmit.disabledSubmitBtn(disabled,"shoppingCartButton");
+			
+			var isBusinessFlow = $("#CSSUBMIT_BUTTON").attr("isBusinessFlow");
+			if(isBusinessFlow=="true"){
+				$("#"+$.cssubmit.componentId).css("display","none");
+				$.cssubmit.isBizFlow="true";
+			}
+			//----------购物车
+		},
+		
+		//----------购物车
+		bindFucntion:function(buttonType){
+			var beforeAction = $("#CSSUBMIT_BUTTON").attr("beforeAction");
+			//beforeAction动作如果涉及到后台服务调用，必须是同步方法,否则手动启动业务提交
+			if(buttonType){
+				$.cssubmit.clickButton = buttonType.data;
+			}
+			if(beforeAction && beforeAction != ""){
+				var validFlag =  (new Function("return " + beforeAction + ";"))();
+				//如果返回false，停止业务提交
+				if(typeof(validFlag) == "undefined" || !validFlag){
+					return false;
+				}
+			}
+			
+			$.cssubmit.submitTrade();
+		},
+		//----------购物车
+				
+		//设置单个参数
+		setParam : function(key, value){
+			($.cssubmit.dynamicParamData).put(key, value);
+		},
+		
+		//设置参数,每次设置，都会覆盖之前参数
+		addParam : function(paramStr){
+			$.cssubmit.dynamicParams = paramStr;
+		},
+		//清除所有动态参数
+		clearParam:function(){
+			$.cssubmit.dynamicParams = null;
+			$.cssubmit.dynamicParamData.clear();
+		},
+		//重置业务
+		resetTrade : function(){
+			var resetAction=$("#CSRESET_BUTTON").attr("resetAction"); 
+			if(!resetAction || resetAction.length == 0){
+				var href = window.location.href;
+				if(href){
+					if(href.lastIndexOf("#nogo") == href.length-5){
+						href = href.substring(0, href.length-5);
+					}
+					window.location.href = href;
+				}
+			}else{
+				(new Function(resetAction + ";"))();
+			}
+			
+		},
+		
+		// 集团页面流框架页面提交
+		windowFlowSubmit : function(){
+			var flowSubmitData = window.getFlow().getSubmitData();
+			
+			$.cssubmit.addParam(flowSubmitData);
+			$.cssubmit.bindCallBackEvent($.cssubmit.callBack.grpCallBack);
+			
+			$("#CSSUBMIT_BUTTON").trigger("click");
+		},
+		
+		//业务提交规则校验
+		submitTrade : function(){
+			if($.auth && $.auth.getAuthData()){
+				var user=$.auth.getAuthData().get("USER_INFO");
+				if(user && user.get("SERIAL_NUMBER")){
+					if(user.get("SERIAL_NUMBER") != $.trim($("#AUTH_SERIAL_NUMBER").val()) && $("#AUTH_SUBMIT_BTN").attr("authType") != "04"
+						&& $("#TRADE_TYPE_CODE").val() != "290"){
+						MessageBox.alert("告警提示", "认证校验的服务号码与当前输入的服务号码不一致，请确认");
+						return ;
+					}
+				}
+			}			
+			
+			var cancelRule = $("#CSSUBMIT_BUTTON").attr("cancelRule");
+			var isGrp = $("#CSSUBMIT_BUTTON").attr("isGrp");
+			if(!cancelRule || cancelRule=="") 	cancelRule = "false";
+			if(!isGrp || isGrp=="") 	isGrp = "false";
+			
+			//调用业务规则校验
+			if($.tradeCheck && cancelRule == "false" && isGrp=="false"){
+				$.tradeCheck.checkTrade(1 , $.cssubmit.checkFee);
+			}else{
+				//如果没有导入业务规则校验，默认为不需要执行
+				$.cssubmit.checkFee();
+			}
+		},
+		//核对费用
+		checkFee:function(){
+			debugger;
+			var buttonType = $.cssubmit.clickButton;
+			//购物车
+			if($.feeMgr&&buttonType=="addShoppingCart" || $.cssubmit.isBizFlow=="true"){
+				if($.feeMgr.checkFee($.cssubmit.registerTrade, $.cssubmit.cancelAction)){
+					$.cssubmit.registerTrade();
+				}
+			}else if($.feeMgr&&buttonType!="addShoppingCart"){
+				//返回true则自动提交业务
+				if($.feeMgr.checkFee($.cssubmit.registerTrade, $.cssubmit.cancelAction)){
+					$.cssubmit.registerTrade();
+				}
+			}else{
+				$.cssubmit.registerTrade();
+			}
+		},
+		//业务登记
+		registerTrade : function(noFeeFlag){
+			var submitFalg = true;
+			debugger;
+			var area = $("#CSSUBMIT_BUTTON").attr("area");
+			var callBean = $("#CSSUBMIT_BUTTON").attr("callBean");
+			var listener = $("#CSSUBMIT_BUTTON").attr("listener");
+			var params = $("#CSSUBMIT_BUTTON").attr("params");
+			var refreshPart = $("#CSSUBMIT_BUTTON").attr("refreshPart");
+			
+			//禁用提交按钮
+			$.cssubmit.disabledSubmitBtn(true);
+						
+			if(!area || area=="") 			area = "AuthPart";
+			if(!callBean || callBean=="") 	submitFalg = false;
+			if(!listener || listener=="") 	listener = "onTradeSubmit";
+			if(!refreshPart) 	refreshPart = null;
+			if(!params) 		params = "";
+			
+			//----------购物车
+			var submitType = $.cssubmit.clickButton;
+			$.cssubmit.setParam("SUBMIT_TYPE",submitType);
+			var isbizFlow = $.cssubmit.isBizFlow;
+			if(isbizFlow=="true"){
+				$.cssubmit.setParam("IS_BIZ_FLOW","true");
+			}
+			//------------购物车
+			
+			//加载动态字符串参数
+			if($.cssubmit.dynamicParams && ($.cssubmit.dynamicParams).length>0){
+				params += $.cssubmit.dynamicParams;
+			}
+			//加载动态键值对参数
+			if($.cssubmit.dynamicParamData && ($.cssubmit.dynamicParamData).length>0){
+				($.cssubmit.dynamicParamData).eachKey(function(key,index,totalcount){
+					params += "&"+key+"="+($.cssubmit.dynamicParamData).get(key);
+				});
+			}
+			
+			//设置认证方式.如果无认证组件设置CHECK_MODE=Z，如果免认证则CHECK_MODE=F,需要更新台账表PROCESS_TAG_SET第20位
+			var checkMode="Z";
+			var checkDesc="其它方式";
+			if($.auth && $.auth.getAuthData()){
+				var authData = $.auth.getAuthData();
+				if(authData && authData.containsKey("CHECK_MODE")){
+					checkMode= authData.get("CHECK_MODE");
+				}else{
+					if($.topPersonLogin){
+						checkMode = $.topPersonLogin.checkMode;
+						checkDesc = $.topPersonLogin.checkDesc;
+						if(!checkMode){	
+							checkMode="F";
+							checkDesc="其它方式";
+						}
+					}else{
+						checkMode = "F";
+					}
+				}
+				if(authData && authData.containsKey("CHECK_DESC")){
+					checkDesc= authData.get("CHECK_DESC");
+				}
+				params += "&CHECK_MODE="+checkMode;
+				//增加客服参数传值
+				if($("#AUTH_SUBMIT_BTN").attr("callSeqKf")!=""){
+					params += "&KF_SERV_REQ_ID="+$("#AUTH_SUBMIT_BTN").attr("callSeqKf");
+				}
+			}
+			if(top.document.getElementById("staffId") && top.$){
+				params += "&NGBOSS_STAFF_ID="+top.$("#staffId").val();
+			}
+			if(!$.cssubmit.commData) $.cssubmit.commData=$.DataMap();
+			$.cssubmit.commData.put("CHECK_MODE", checkMode);
+			$.cssubmit.commData.put("CHECK_DESC", checkDesc);
+			
+			if($.cssubmit.repeatFlag){
+				MessageBox.alert("告警提示", "业务已经在受理中，请不要重复提交业务！");
+				return ;
+			}
+			//防止重复提交
+			$.cssubmit.repeatFlag = true;
+			
+			//------购物车
+			if(submitType=="submit"){
+				   $.beginPageLoading("业务受理中。。。");
+				}else if(submitType=="addShoppingCart"){
+				   $.beginPageLoading("加入购物车过程中。。。");
+				}
+			//--------购物车
+			
+			$.beginPageLoading("业务受理中。。。");
+			if(!submitFalg){
+				//普通方式提交
+				$.ajax.submit(area, listener, params,refreshPart,
+					$.cssubmit.callBack.payFunc,
+						$.cssubmit.callBack.errorFunc,
+							$.cssubmit.callBack.timeoutFunc);				
+			}else{
+				//特殊方式提交
+				hhSubmit(area, callBean, listener, params,
+					$.cssubmit.callBack.payFunc,
+						$.cssubmit.callBack.errorFunc,
+							$.cssubmit.callBack.timeoutFunc);				
+			}
+		},
+		//设定提交成功回调事件
+		bindCallBackEvent:function(func){
+			$.cssubmit.callBackEvent = func;
+		},
+		//打印调用事件
+		printTrade:function(func){
+			//默认执行方法
+			if($.cssubmit.tradeData && $.printMgr){
+				//如果有公用参数，则加入打印个性化参数中，后续打印需要
+				if($.cssubmit.commData){
+					$.printMgr.addPrintParam($.cssubmit.commData);
+				}
+				
+				var printData = $.cssubmit.tradeData;
+				if(typeof($.cssubmit.tradeData)!="undefined" && $.cssubmit.tradeData instanceof Wade.DatasetList){
+					printData = printData.get(0);
+				}
+				
+				// 自定义打印事件
+				if($.printMgr.printEvent){
+					$.printMgr.printEvent(printData);
+				}else{
+					$.printMgr.printTrade(printData, func);
+				}
+				//$.cssubmit.commData = null;
+			}
+		},
+		//弹出电子发票开具推送信息设置的对话框
+		openKJConf:function(){
+			//弹出设置页面
+			var userId=null;
+			var eparchyCode=null;
+			if($.auth && $.auth.getAuthData()){
+				var user=$.auth.getAuthData().get("USER_INFO");
+				if(user){
+					userId=user.get("USER_ID");
+					eparchyCode=user.get("EPARCHY_CODE"); //取用户路由，有可能是异地受理
+				}
+			} else if ($.cssubmit.tradeData && $.cssubmit.tradeData.containsKey("USER_ID")) {
+				userId=$.cssubmit.tradeData.get("USER_ID");
+				eparchyCode=$.cssubmit.tradeData.get("EPARCHY_CODE"); //取用户路由，有可能是异地受理
+			}				
+			if (!userId || userId==null || userId.length==0) {
+				MessageBox.alert("告警提示","未获取到用户信息！");
+				return ;
+			}
+			var tradetypecode=$.cssubmit.commData.get("TRADE_TYPE_CODE");
+			
+			if (!eparchyCode || eparchyCode.length<2){
+				var dataTmp = null;
+				if($.cssubmit.tradeData instanceof $.DatasetList){
+					dataTmp = $.cssubmit.tradeData.get(0);
+				}else if($.cssubmit.tradeData instanceof $.DataMap){
+					dataTmp = $.cssubmit.tradeData;
+				}				
+				if(dataTmp.containsKey("DB_SOURCE")){
+					eparchyCode = dataTmp.get("DB_SOURCE");
+				}
+			}
+			
+			var eparchyCodeparamStr = "";
+			if (eparchyCode && eparchyCode.length>0) {
+				eparchyCodeparamStr = "&EPARCHY_CODE="+eparchyCode+"&ROUTE_EPARCHY_CODE="+eparchyCode;
+			}
+			openNav("开具设置", "changeuserinfo.ModifyEPostInfo", "onInitTrade", "&USER_ID=" +userId+eparchyCodeparamStr+"&TRADE_TYPE_CODE="+tradetypecode);		
+		},
+		//集团弹出设置页面	
+		openGrpKJConf:function(){
+			
+			if ($.cssubmit.commData && $.cssubmit.commData.containsKey("Send_GROUP_ID")) {
+				sendGroupId=$.cssubmit.commData.get("Send_GROUP_ID");
+				
+			}		
+			if (!sendGroupId || sendGroupId==null || sendGroupId.length==0) {
+				MessageBox.alert("告警提示","未获取到集团信息！");
+				return ;
+			}
+			openNav("开具设置", "group.creategroupacct.SetGrpElecInvoice", "initial", "&GROUP_ID=" +sendGroupId);		
+		},
+		
+		//获取业务类型是否支持开具电子发票推送信息设置
+		getTradeTypeKjConf: function(tradeTypeCode){				
+				var param = "&ACTION=GET_TRADE_TYPE_KJ_CONF";
+				param += "&TRADE_TYPE_CODE="+tradeTypeCode;
+				$.beginPageLoading("加载业务类型是否支持开具电子发票推送信息设置数据。。。");			
+				ajaxSubmit(null, null, param, $.cssubmit.componentId, 
+							function(data){
+								$.endPageLoading();
+								if(data){
+									$.cssubmit.commData.put("CAN_SET_EPRINTCEPT_CONF", data.get("CAN_SET_EPRINTCEPT_CONF"));
+								    $.cssubmit.commData.put("TRADE_TYPE_CODE", tradeTypeCode);
+								}
+							},
+							function(code, info, detail){
+								$.endPageLoading();
+								MessageBox.error("错误提示","加载业务类型是否支持开具电子发票推送信息设置数据报错！", null, null, info, detail);
+							},/*function(){
+								$.endPageLoading();
+								MessageBox.alert("错误提示","加载业务类型是否支持开具电子发票推送信息设置数据超时！");
+							}, */{
+								"async" : false  //必须第七个参数
+							});	
+						
+		},
+		//增加客户资料变更的按钮
+		addChangeCustInfoButton: function(){
+			//客户资料变更界面使用
+			var flag;
+			if($.cssubmit.commData){
+				flag = $.cssubmit.commData.get("IS_CHANGE_CUST_FLAG");
+				if(flag && flag=="false") return false;
+			}
+			
+			var changeCustFlag,sn;
+			if($.auth && $.auth.getAuthData()){
+				var authData = $.auth.getAuthData();
+				if(authData && authData.get("CUST_INFO")){
+					changeCustFlag = authData.get("CUST_INFO").get("CHANGE_CUST_FLAG");
+				}
+				if(authData && authData.get("USER_INFO")){
+					sn = authData.get("USER_INFO").get("SERIAL_NUMBER");
+				}
+			}
+			if(!changeCustFlag || (changeCustFlag && changeCustFlag!="true"))return false;
+			$.cssubmit.addCustButton(sn);
+			return true
+		},
+		
+		addCustButton:function(sn){
+			var param = "&TRADE_TYPE_CODE=60&DISABLED_INPUT=true&AUTO_AUTH=true";
+			if(sn) param += "&SERIAL_NUMBER="+sn;
+			$.cssubmit.bindCustomizeBtn({
+	 			"name":"客户资料变更",
+	 			"icon":"next",
+	 			"fn":function(){
+	 				openNav('客户资料变更','changecustinfo.ModifyCustInfo', 'init', param);
+	 			}
+		 	});
+		},
+		
+		/**
+		*如果费用列表里面有支付费用大于0的才需要打印
+		*/
+		isShowPrintFeeButton: function(feeList){
+			var flag = false;
+			for(var i=0;i<feeList.length;i++){
+				var tempData = feeList.get(i);
+				var fee = tempData.get("FEE");
+				if(Math.round(parseFloat(fee))>0){
+					flag = true;
+				}
+			}
+			return flag;
+		},
+		
+		//回调方法
+		callBack:{
+			//支付中心改造
+			//支付
+			payFunc:function(data){
+				$.cssubmit.tradeData = data;
+				var tradeData;
+				if(data instanceof $.DatasetList){
+					tradeData = data.get(0);
+				}else if(data instanceof $.DataMap){
+					tradeData = data;
+				}	
+				
+				if(!(tradeData && tradeData.containsKey("ORDER_ID") && tradeData.get("ORDER_ID")!="")){
+					$.cssubmit.callBack.successFunc(data, true);
+					return;
+				}
+				
+				//单独打印的业务直接跳过
+				if(tradeData.containsKey("NO_PAY_FLAG") && tradeData.get("NO_PAY_FLAG") == "true"){
+					$.cssubmit.callBack.successFunc(data, true);
+					return;
+				}
+				
+				// 集团有些业务前台有费用信息 但是后台处理了只入了挂账信息， 这里先提前校验下，没有入fee_sub表就不跳转支付				
+				$.beginPageLoading("正在校验费用。。。");
+				var param = "&ACTION=PAYMENT";
+				tradeData.eachKey(function(key,index,totalcount){
+					if(key !="EPOST_DATA" && key !="PRINT_INFO" && key !="page" && key !="listener") {// 这种数据没必要传到后台
+						param += "&"+key+"="+tradeData.get(key);
+					}
+				});
+				if($.auth && $.auth.getAuthData()){
+					var user=$.auth.getAuthData().get("USER_INFO");
+					if(user && user.get("SERIAL_NUMBER")){
+						param += "&SERIAL_NUMBER="+user.get("SERIAL_NUMBER");
+					}
+				}else if(tradeData.get("SERIAL_NUMBER")){
+						param += "&SERIAL_NUMBER="+tradeData.get("SERIAL_NUMBER");
+				}else{//开户无auth组件，只能从页面上取
+						param += "&SERIAL_NUMBER="+$("#SERIAL_NUMBER").val();
+				}
+				if(tradeData.containsKey("DB_SOURCE")){
+					param += "&EPARCHY_CODE="+tradeData.get("DB_SOURCE");
+				}
+				ajaxSubmit(null, null, param, $.cssubmit.componentId, 
+					function(paydata){
+						$.endPageLoading();
+						if(paydata && paydata.containsKey("CANCEL_FEE_STATE")){
+							if(paydata.get("CANCEL_FEE_STATE") == "true"){
+								//清退费用处理成功
+								$.cssubmit.callBack.successFunc(data, true);
+							}else{
+								$.cssubmit.callBack.payFail(data);
+							}
+						}else{
+							if(paydata && paydata.get("ORDER_HAS_FEE")=="false"){
+								//没有费用直接回调成功接口
+								$.cssubmit.callBack.successFunc(data, true);
+							}else if(paydata && paydata.get("ORDER_HAS_FEE")=="true"){
+								var orderId = paydata.get("ORDER_ID");
+								var peerOrderId = paydata.get("PEER_ORDER_ID");
+								var payItemType = paydata.get("PAY_WAY");
+								var onlineShowFlag = paydata.get("IS_SHOW");
+								var agentFlag = paydata.get("IS_AGENT");
+								var extParam = paydata.get("EXTEND_PARAM");
+								var hideWay = paydata.get("HIDE_WAY");
+								var payParam = "&ORDER_ID="+orderId+"&PEER_ORDER_ID="+peerOrderId + "&PARENT_EVENT_ID=PAY_BACK_DETAIL_INFO";
+								payParam += "&IS_SHOW=" + onlineShowFlag + "&IS_AGENT=" + agentFlag + "&PAY_WAY=" + payItemType + "&EXTEND_PARAM=" + encodeURI(encodeURI(extParam));
+								payParam += "&HIDE_WAY="+hideWay;
+								$.popupPage('pay.access.PayMain', 'queryOrderInfo', payParam, '支付中心', 800, 400, "", null, '/paymanm/paymanm');	
+							}
+						}
+
+					},
+					function(code, info, detail){
+						$.endPageLoading();
+						MessageBox.error("支付/清退失败3","请通过未支付订单管理界面重新支付。",
+							function(){
+								$.cssubmit.callBack.payFail(data);
+							}, null, info, detail);
+						
+					},{async:false});	
+			},
+			
+			//支付中心界面返回回调
+			payMentBack: function(){
+				var data = $.cssubmit.tradeData;
+				var payBackStr = $("#PAY_BACK_DETAIL_INFO").val();
+				var payresultMap = $.DataMap(payBackStr);
+				if(payresultMap && payresultMap.containsKey("STATE")){
+					var state = payresultMap.get("STATE");
+					if(state && state == "2"){
+						$.cssubmit.callBack.payBackFunc(data, payresultMap);
+					}else if(state && state == "1"){
+						var payDetail = payresultMap.get("PAY_DETAIL");
+						var payItem = payDetail.get(0);
+						var payType = "";
+						if(payItem){
+							payType = payItem.get("PAY_TYPE");
+						}
+						
+						if(payType && payType == "ZW"){
+							$.cssubmit.callBack.payBackFunc(data, payresultMap);
+						}else{
+							MessageBox.error("支付失败","取消订单！",
+									function(){
+										$.cssubmit.callBack.payFailFunc(data);
+									}, null, null, null);
+						}
+					}else{
+						MessageBox.error("支付失败","取消订单！",
+							function(){
+								$.cssubmit.callBack.payFailFunc(data);
+							}, null, null, null);
+					}
+				}else{
+					MessageBox.error("支付失败2","取消订单！",
+						function(){
+							$.cssubmit.callBack.payFailFunc(data);
+						}, null, null, null);
+				}
+			},
+			
+			//支付失败 则取消工单(SS.UnPayOrderManagerSVC.clearOrder)
+			payFailFunc: function(data){
+				$.beginPageLoading("支付失败，正在取消订单。。。");
+				var tradeData;
+				if(data instanceof $.DatasetList){
+					tradeData = data.get(0);
+				}else if(data instanceof $.DataMap){
+					tradeData = data;
+				}
+				var param = "&ACTION=PAY_FAIL&ORDER_ID="+tradeData.get("ORDER_ID") + "&EPARCHY_CODE="+tradeData.get("DB_SOURCE");
+				ajaxSubmit(null, null, param, $.cssubmit.componentId,
+						function(result){
+							$.endPageLoading();
+							if(result && result.get("RESULT_CODE")=="0"){
+								//取消订单成功
+								MessageBox.alert("取消订单成功", "订单取消成功！",
+										function(){
+											$.cssubmit.promptOut(true);
+										});
+							}else{
+								MessageBox.alert("取消订单失败", "取消订单失败！请去订单未支付管理界面处理！",
+									function(){
+										$.cssubmit.callBack.payFail(data);
+									}, null, null, null);
+							}
+						},
+						function(code, info, detail){
+							$.endPageLoading();
+							MessageBox.error("错误提示",null, 
+								function(){
+									$.cssubmit.callBack.payFail(data);
+								}, info, detail);
+							
+				});	
+			},
+			
+			//支付成功后处理
+			payBackFunc: function(data,payData){
+				$.beginPageLoading("支付成功，正在修改订单状态。。。");
+				var tradeData;
+				if(data instanceof $.DatasetList){
+					tradeData = data.get(0);
+				}else if(data instanceof $.DataMap){
+					tradeData = data;
+				}	
+				var param = "&ACTION=PAY_BACK";
+				tradeData.eachKey(function(key,index,totalcount){
+					if(key !="EPOST_DATA" && key !="PRINT_INFO" && key !="page" && key !="listener"){ // 这种数据没必要传到后台
+						param += "&"+key+"="+tradeData.get(key);
+					}
+				});
+				param += "&PAY_DETAIL="+payData.get("PAY_DETAIL");
+				if($("#CSSUBMIT_BUTTON").attr("isGrp")=="true"){
+					param += "&IS_GROUP=TRUE";
+				}else{
+					param += "&IS_GROUP=FALSE";
+				}
+				var tradeTypeCode="";
+				if($.auth){
+					tradeTypeCode= $("#TRADE_TYPE_CODE").val();
+				}else if( tradeData && tradeData.containsKey("ORDER_TYPE_CODE") ){
+					tradeTypeCode = tradeData.get("ORDER_TYPE_CODE");
+				}else if( tradeData && tradeData.containsKey("TRADE_TYPE_CODE") ){
+					tradeTypeCode = tradeData.get("TRADE_TYPE_CODE");
+				}
+				param += "&TRADE_TYPE_CODE="+tradeTypeCode + "&EPARCHY_CODE="+tradeData.get("DB_SOURCE");
+				ajaxSubmit(null, null, param, $.cssubmit.componentId,
+						function(result){
+							$.endPageLoading();
+							if(result && result.get("RESULT")=="SUCCESS"){
+								$.cssubmit.callBack.successFunc(data, true);
+							}else{
+								MessageBox.error("修改订单状态失败", "支付成功后修改订单失败！",
+									function(){
+										$.cssubmit.callBack.payFail(data);
+									}, null, null, null);
+							}
+						},
+						function(code, info, detail){
+							$.endPageLoading();
+							MessageBox.error("错误提示",null, 
+								function(){
+									$.cssubmit.callBack.payFail(data);
+								}, info, detail);
+							
+				},{async:false});	
+			},
+			
+			//支付失败
+			payFail: function(data){
+				$.cssubmit.orderPayFlag = false;
+				$.cssubmit.callBack.successFunc(data, false);
+			},
+			
+			//提交成功回调
+			successFunc:function(data, payFlag){
+				$.endPageLoading();
+				$.cssubmit.tradeData = data;		//保存业务受理返回结果
+								
+				$.cssubmit.clearParam();
+				$.cssubmit.repeatFlag = false;
+				
+				//同步的各自业务受理成功后的执行方法
+				if($.cssubmit.getAfterSubmitAction()){
+					var afterSubmitAction = $.cssubmit.getAfterSubmitAction();
+					if(afterSubmitAction){
+						afterSubmitAction.call(this);
+					}
+				}
+				
+				//如果是集团提交，直接按照给定的方式去回调，不需要走后面逻辑
+				if($("#CSSUBMIT_BUTTON").attr("isGrp")=="true"){
+					$.cssubmit.callBack.grpCallBack(data, payFlag);
+					return;
+				}
+				//如果有设置回调事件，则执行自定义事件，转为人工控制
+				if($.cssubmit.callBackEvent){
+					$.cssubmit.callBackEvent(data);
+					return ;
+				}
+				
+				var isShowPrint = false;			//是否显示打印按钮	
+				var isTicketPrint = false;		//是否打印票据
+				var isPrivPrint = true;			//权限打印标识(控制业务受理单)
+				
+				//导航业务受理
+				if($.cssubmit.isBizFlow=="true"){
+					return true;
+				}
+				
+				//是否增加客户资料变更的按钮
+				var addFlag = false;
+				if($.cssubmit.addChangeCustInfoButton()) addFlag = true;
+				
+				//如果没有回调事件，继续按照默认进行业务受理信息展示
+				var title = "业务受理成功";
+				//---------购物车
+				if($.cssubmit.clickButton=="addShoppingCart"){
+					   title = "成功加入购物车";
+					   $.cssubmit.showMessage("success", title, content, false);
+					   return;
+					}
+				//---------购物车
+				
+				//4G提示
+				var msg4g = "";
+				if($.cssubmit.commData){
+					msg4g = $.cssubmit.commData.get("4G_MSG");
+					if(!msg4g) msg4g="";
+					else msg4g += "<BR/>";
+				}
+				
+				var content = msg4g+"点【确定】继续业务受理。";
+				var tradeData;
+				if(data instanceof $.DatasetList){
+					tradeData = data.get(0);
+				}else if(data instanceof $.DataMap){
+					tradeData = data;
+				}
+				//ADD BY wangxy5 垃圾短信解黑（营业前台）需求提交修改成功提示
+				var tradeTypeCode;
+				if($.auth){
+					tradeTypeCode= $("#TRADE_TYPE_CODE").val();
+				}else if( tradeData && tradeData.containsKey("ORDER_TYPE_CODE") ){
+					tradeTypeCode = tradeData.get("ORDER_TYPE_CODE");
+				}else if( tradeData && tradeData.containsKey("TRADE_TYPE_CODE") ){
+					tradeTypeCode = tradeData.get("TRADE_TYPE_CODE");
+				}
+									
+				if(tradeData && tradeData.containsKey("ORDER_ID")){
+					content = msg4g+"客户订单标识：" + tradeData.get("ORDER_ID") + "<br/>点【确定】继续业务受理。";
+					if(addFlag)
+						content += "<BR/><div style='color:red'>您登记的是第一代居民身份证,根据国家有关规定,现已停止使用,请尽快携二代居民身份证至移动营业厅更新证件信息!</div>"; 
+				}
+				
+				if ("701"==tradeTypeCode&&tradeData && tradeData.containsKey("ORDER_ID")){
+					content = msg4g+"客户订单标识：" + tradeData.get("ORDER_ID") + "<br/>点【确定】继续业务受理。<br/>备注：请客户进行病毒查杀！";
+				}
+				if (tradeData.containsKey("SEC_CONFIRM")&&(tradeData.get("SEC_CONFIRM")==1)){
+					content = msg4g+"业务受理完成，二次确认短信已经下发，请提醒用户回复确认短信！";
+					isPrivPrint=false;
+				}
+				
+				//如果打印权限控制
+				if($("#CSSUBMIT_BUTTON").attr("isPrint") == "false"){
+					isPrivPrint=false;
+				}
+				
+				//有费用但支付失败
+				if(!payFlag){
+					title = "业务已受理,未支付,请点击【订单未支付管理】按钮去处理！";
+					isPrivPrint=false;
+					$.cssubmit.addOrderPayManager(tradeData.get("ORDER_ID"), tradeData.get("DB_SOURCE"));
+				}
+				
+				//判断是否需要打印
+				if($.feeMgr){
+					var feeList = $.feeMgr.getFeeList();
+					if(feeList.length>0){
+						isTicketPrint = $.cssubmit.isShowPrintFeeButton(feeList);
+						//isTicketPrint=true;
+						//打印发票 收据
+						if(isTicketPrint){
+							$.cssubmit.commData.put("PRINT_TICKET", "1");
+						}
+					} 
+				}
+
+				var tradeTypeCode;
+				if($.auth){
+					tradeTypeCode= $("#TRADE_TYPE_CODE").val();
+				}else if( tradeData && tradeData.containsKey("ORDER_TYPE_CODE") ){
+					tradeTypeCode = tradeData.get("ORDER_TYPE_CODE");
+				}else if( tradeData && tradeData.containsKey("TRADE_TYPE_CODE") ){
+					tradeTypeCode = tradeData.get("TRADE_TYPE_CODE");
+				}
+				if(!tradeTypeCode){
+					tradeTypeCode = "";
+				}
+				//如果没有找到业务类型，则不走打印
+				//if(tradeTypeCode){
+					var param = "&ACTION=IS_PRINT";
+					param += "&TRADE_TYPE_CODE="+tradeTypeCode;
+					ajaxSubmit(null, null, param, $.cssubmit.componentId, 
+						function(prtdata){
+							$.endPageLoading();
+							if(prtdata && prtdata.containsKey("PRT_TAG")){
+								isShowPrint = (prtdata.get("PRT_TAG")== "1")?true:false;
+							}
+							var isNoPrint = false;
+							if(prtdata && prtdata.containsKey("IS_NO_PRINT")){
+								isNoPrint = (prtdata.get("IS_NO_PRINT")== "1")?true:false;
+								if(!isNoPrint){
+									content = content + "<br/><div style='color:red'>【重要】点击“确定”前请确认您已完成无纸化操作，否则属于业务违规！</div>"
+								}
+							}
+							if(!payFlag){
+								$.cssubmit.showMessage("error", title, content, false);
+							}else{
+								$.cssubmit.showMessage("success", title, content, isPrivPrint && isNoPrint && (isShowPrint || isTicketPrint));
+							}
+						},
+						function(code, info, detail){
+							$.endPageLoading();
+							MessageBox.alert("错误提示","核对是否打印报错！", null, null, info, detail);
+						},function(){
+							$.endPageLoading();
+							MessageBox.alert("告警提示","核对是否打印超时！");
+					});
+				//}else{
+				//	$.cssubmit.showMessage("success", title, content, isPrivPrint&isTicketPrint);
+				//}	
+				//触点营销			
+				if(tradeData){
+					try{
+						setTimeout(function(){
+							if(top.triggerPushInfos && typeof(top.triggerPushInfos)=="function"){
+								var tradeId = tradeData.get("TRADE_ID");
+								var orderTypeCode = tradeData.get("ORDER_TYPE_CODE");
+								var userId = tradeData.get("USER_ID");
+								var custCode = $("#AUTH_SERIAL_NUMBER").val();
+								if(!custCode || custCode == ""){
+									custCode = $("#SERIAL_NUMBER").val();
+								}
+								top.triggerPushInfos("TOUCH_TYPE=1&CHNL_TYPE=T000&USER_ID="+userId+"&TRADE_TYPE_CODE="+orderTypeCode+"&TRADE_ID="+tradeId+"&CUST_CODE="+custCode,"baseinfo");
+							}
+						},100);
+					}catch(e){
+						//测试,暂时先try-catch住
+					}
+				}
+			},
+			errorFunc:function(code, info, detail){
+				$.endPageLoading();
+				var errorInfo = "";
+				if(info){
+					info = info.replace("#", " ");
+					info = info.replace(/(\n|\r\n)+/g,"#");
+					var infoArr = info.split("#");
+					var count = 0;
+					for(var i=0;i<infoArr.length;i++){
+						if(!infoArr[i])continue;
+						if(infoArr[i].indexOf("错误编码")!=-1){
+							count += 1;
+							if(i==0)
+								errorInfo += count+": ["+infoArr[i]+"],";
+							else
+								errorInfo += "<br/>"+count+": ["+infoArr[i]+"],";	
+						}else{
+							if(i==0){
+								count += 1;
+								errorInfo += count+": [错误编码:"+code+"],"+infoArr[i];
+							}else{
+								errorInfo += infoArr[i];	
+							}
+						}
+					}
+				}
+				MessageBox.alert("错误提示","业务受理失败！", $.cssubmit.cancelAction, null, errorInfo, detail);		
+			},
+			timeoutFunc:function(){
+				$.endPageLoading();
+				MessageBox.alert("告警提示", "业务提交超时！", $.cssubmit.cancelAction);
+				return false;
+			},
+			// 集团业务回调函数
+			grpCallBack : function(data, payFlag){
+				var isPrint = false;// 打印标识
+				
+				//如果没有回调事件，继续按照默认进行业务受理信息展示
+				var content = "点【确定】继续业务受理。"
+				
+				if(data && data != null && data.length > 0) {
+					orderId = data.get(0).get("ORDER_ID") + "";
+					content = "业务订单号：" + orderId + "<br/>" + "点【确定】继续业务受理。";
+					
+					if(data.get(0) && data.get(0).containsKey("PRINT_DATA")){
+						isPrint = true;
+					}
+					//获取groupId
+					groupId=data.get(0).get("GROUP_ID");
+					$.cssubmit.commData.put("Send_GROUP_ID", groupId);
+					if(data && data.get(0)){					
+						debugger;
+						if((data.get(0).get("CUST_TYPE") =="GRP")){
+							$.printMgr.userRecptSvcConf.custType = "GRP";
+						}
+						else{
+							$.printMgr.userRecptSvcConf.custType = "MEB";
+						}
+						
+						if( data.get(0).containsKey("EPOST_DATA")){//电子发票推送信息
+							
+							if(printInfos.get("EPOST_DATA").containsKey("IS_ERECEPT")){
+								$.printMgr.userRecptSvcConf.sendWay = data.get(0).get("EPOST_DATA").get("RECEIVER_SENDWAY");
+								$.printMgr.userRecptSvcConf.receiverMobile = data.get(0).get("EPOST_DATA").get("RECEIVER_MOBILE");
+								$.printMgr.userRecptSvcConf.receiverEmail = data.get(0).get("EPOST_DATA").get("RECEIVER_EMAIL");
+								$.printMgr.userRecptSvcConf.hadGot = true;
+								$.printMgr.userRecptSvcConf.isERecept = "TRUE";
+							}
+						}
+					}
+					
+					//支付失败
+					if(!payFlag){
+						isPrint = false;
+						$.cssubmit.addOrderPayManager(data.get(0).get("ORDER_ID"), "cg");
+					}
+				}
+				
+				$.cssubmit.showMessage("success", "业务受理成功", content, isPrint);
+				if(isPrint){
+					$.printMgr.bindPrintEvent($.printMgr.grpPrintTrade);
+				}
+			}
+		},
+		
+		addOrderPayManager: function(orderId, eparchyCode){
+			var param = "&INIT_QUERY=TRUE&EPARCHY_CODE="+eparchyCode;
+			if(orderId && orderId!="") 
+				param += "&ORDER_ID="+orderId;
+			$.cssubmit.bindCustomizeBtn({
+	 			"name":"订单未支付管理",
+	 			"icon":"next",
+	 			"fn":function(){
+	 				openNav('订单未支付管理','payment.UnPayOrderManager', 'init', param);
+	 			}
+		 	});
+		},
+		
+		//电子工单按钮配置
+		confElecAcceptBill:function(){
+			$.cssubmit.bindCustomizeBtn({
+	 			"name":"打印电子工单",
+	 			"icon":"print",
+	 			"fn":function(inData){
+	 				$.cssubmit.printTrade($.printMgr.loadElecAcceptBill);
+	 			}
+		 	});
+		},
+		
+		//取消动作,解除提交禁用或配置参数
+		cancelAction:function(){
+			$.cssubmit.clearParam();
+			$.cssubmit.disabledSubmitBtn(false);
+			$.cssubmit.repeatFlag = false;
+			
+			// 页面流按钮
+			if($("#bnext").length){
+				$("#bnext").removeAttr("disabled");
+				$("#bnext").attr("class", "finish");
+			}
+		},
+		
+		//禁用提交按钮
+		//--------购物车
+		disabledSubmitBtn:function(flag,buttonType){
+		    if(buttonType){
+			    var button = $("#CSSUBMIT_BUTTON");
+			    if(buttonType=="shoppingCartButton"){
+			       button = $("#ADD_SHOPPING_CART");
+			    }
+				$.cssubmit.disabledButton(flag,button);
+			}else{
+			    $.cssubmit.disabledButton(flag,$("#CSSUBMIT_BUTTON"));
+			    if($("#ADD_SHOPPING_CART")){
+			       $.cssubmit.disabledButton(flag,$("#ADD_SHOPPING_CART"));
+			    }
+			}
+		},
+		disabledButton:function(flag,button){
+		   if(!button.length){
+	          return;
+		   }
+		   if(flag == true){
+			  button.attr("disabled", true).addClass("e_dis");
+		   }else{
+			  button.attr("disabled", false).removeClass("e_dis");
+		   }
+		},
+		//------购物车
+		//取消打印
+		disabledPrint:function(flag){
+			if(!$("#CSSUBMIT_BUTTON").length){
+				return ;
+			}
+			if(flag == true){
+				$("#CSSUBMIT_BUTTON").attr("isPrint", "false");
+			}else{
+				$("#CSSUBMIT_BUTTON").attr("isPrint", "true");
+			}
+		},
+		
+		//查看外框是否登录
+		promptOut: function(succFlag){
+			var loginFlag = false;
+			if($.topPersonLogin){
+				loginFlag = $.topPersonLogin.isLogin;
+			}
+			if(!loginFlag){
+				$.cssubmit.closeMessage(succFlag);
+				return;
+			}
+			
+			MessageBox.confirm("确认提示", "<span class='e_red e_strong'>是否【注销该用户】或【继续办理业务】？</span>", 
+		        function(btn){
+					if("cancel" == btn){
+						if($.topPersonLogin){
+							$.topPersonLogin.logout();
+						}else
+							$.cssubmit.closeMessage(succFlag);
+					} else if("ok" == btn){
+						$.cssubmit.closeMessage(succFlag);
+					}
+		    }, {"ok" : "继续办理", "cancel" : "注销用户"});
+		},
+		
+		//业务弹出框按钮事件
+		closeMessage : function(succFlag) {
+			if($("#SUBMIT_MSG_PANEL").length){
+				$("#SUBMIT_MSG_PANEL").remove();
+			}
+			
+			if(!succFlag){
+				$.cssubmit.cancelAction();
+				return;
+			}	
+			//清除费用数据
+			if($.feeMgr){
+				$.feeMgr.clearFee();
+			}
+			
+			var affirmAction = $("#CSSUBMIT_BUTTON").attr("affirmAction");
+			
+			//如果有确认动作，则执行确认事件，否则刷新
+			if(affirmAction && affirmAction != ""){
+				(new Function("return " + affirmAction + ";"))();
+			}else{
+				
+				var href = window.location.href;
+				if(href){
+					if(href.lastIndexOf("#nogo") == href.length-5){
+						href = href.substring(0, href.length-5);
+					}
+					var url = href.substring(0, href.indexOf("?"));
+					var reqParam = href.substr(href.indexOf("?")+1);
+					
+					var paramObj = $.params.load(reqParam);
+					paramObj.remove("SERIAL_NUMBER");
+					paramObj.remove("DISABLED_AUTH");
+					paramObj.remove("AUTO_AUTH");
+					var param = paramObj.toString();
+					param += "&AUTO_AUTH=false";   ////受理成功以后，返回页面界面，禁用之前逻辑中的自动刷新
+					window.location.href = url+"?"+param;
+				}					
+			}
+		},
+
+		/**提示信息
+		showTmpMessage : function(result, title, content, isPrint) {
+			if (!result) {
+				result = "error";
+			}
+			if(!isPrint){
+				isPrint = false;
+			}
+			content = content.replace(/\n/ig, "<br/>");
+			if(result == "success"){
+				var buttons = null;
+				if(isPrint) buttons = {"ext0": "打印,print"};
+				MessageBox.success("成功提示", title, function(btn){
+					//点击确定按钮
+					if(btn == "ok"){
+						$.cssubmit.closeMessage(true);
+					}else if(btn == "ext0"){
+					//点击打印按钮
+						$.cssubmit.printTrade();
+						return false;
+					}
+				},buttons, content);
+			}else{
+				MessageBox.alert("错误提示", title, function(btn){
+					$.cssubmit.closeMessage();
+				} ,null, content);
+			}
+		},*/
+		/**
+		* 自定义业务受理成功窗口按钮
+		* 参数要求Json对象或数组 {} or []
+		* {"name":"打印", "icon":"print", "fn": func}
+		*  name		按钮名字
+		*  icon		按钮icon,参考ECL中icon，如e_ico-print 只需传入print
+		*  fn		按钮点击按钮触发事件，该函数有一个入参，即为业务受理成功后返回对象
+		*  如果有多个按钮，以上面为原子结构，组织成数组传入
+		*/
+		bindCustomizeBtn:function(customizeBtns){
+			var btns = [];
+			if(customizeBtns instanceof Array){
+				btns = customizeBtns;
+			}else{
+				btns.push(customizeBtns);
+			}
+			if(!$.cssubmit.customizeBtns){
+				$.cssubmit.customizeBtns = [];
+			}
+			$.cssubmit.customizeBtns = $.cssubmit.customizeBtns.concat(btns);
+		},
+		//自定义按钮执行方法
+		customizeBtnEvent:function(idx){
+			var btnObj = $.cssubmit.customizeBtns[idx];
+			if(btnObj["fn"]){
+				btnObj["fn"]($.cssubmit.tradeData);
+			}
+		},
+		
+		//提示信息
+		showMessage : function(result, title, content, isPrint) {
+			if (!result) {
+				result = "error";
+			}
+			if(!isPrint){
+				isPrint = false;
+			}
+			
+			var judgeTrade = ("error" == result);
+			var msgPanel = $("#SUBMIT_MSG_PANEL");
+			if (!msgPanel.length) {
+				var msgArr = [];
+				msgArr.push('<div id="SUBMIT_MSG_PANEL" class="c_popup">	');
+				msgArr.push('<div class="c_popupWrapper">	');
+				msgArr.push('<div class="c_popupHeight"></div>	');
+				msgArr.push('<div class="c_popupBox">	');
+				msgArr.push('<div class="c_popupTitle">	');
+				msgArr.push('<div class="text">'	+ (judgeTrade ? "错误提示" : "成功提示")	+ 	'</div>	');
+				msgArr.push('</div>	');
+				msgArr.push('<div class="c_popupContent"><div class="c_popupContentWrapper">	');
+				if($.cssubmit.orderPayFlag){//支付成功
+					msgArr.push('<div class="c_msg c_msg-popup'+ (judgeTrade? "": " c_msg-success")+ '">	');
+				}else{
+					msgArr.push('<div class="c_msg c_msg-popup c_msg-error">	');
+				}
+				msgArr.push('	<div id="SUBMIT_MSG_TITLE" class="title"></div>	');
+				msgArr.push('	<div id="SUBMIT_MSG_CONTENT" class="content"></div>	');
+				msgArr.push('</div>	');
+				msgArr.push('<div id="SUBMIT_MSG_BTN" class="c_submit">	');
+				
+				msgArr.push('<input type="hidden" id="POP_PRINT_ONENOTE" name="POP_PRINT_ONENOTE" value="" afterAction="$.printMgr.afterPrintOneNote()" desc="统一认证关闭按钮"/>');
+				
+				//新增一体机下单按钮
+				msgArr.push('<button  onclick=\"javascript:$.cssubmit.oneUnit();\" id="OneUnit" class=\"e_button-page\"><i class=\"e_ico-print\"></i><span>一体机下单</span></button>');	
+				msgArr.push('<button  onclick=\"javascript:$.cssubmit.scanData();\" id="SCAN_BUTTON" class=\"e_button-page\"><i class=\"e_ico-print\"></i><span>电子受理单</span></button>');	
+				//显示代办按钮
+				//start 添加代办设置按钮
+				try{
+				if($.cssubmit.tradeData instanceof $.DatasetList){
+					$.cssubmit.tradeData = $.cssubmit.tradeData.get(0);
+				}else if($.cssubmit.tradeData instanceof $.DataMap){
+					$.cssubmit.tradeData = $.cssubmit.tradeData;
+				}
+				var tradeTypeCode1;
+				if($.auth){
+					tradeTypeCode1= $("#TRADE_TYPE_CODE").val();
+				}else 
+				if( $.cssubmit.tradeData && $.cssubmit.tradeData.containsKey("ORDER_TYPE_CODE") ){
+					tradeTypeCode1 = $.cssubmit.tradeData.get("ORDER_TYPE_CODE");
+				}else if( $.cssubmit.tradeData && $.cssubmit.tradeData.containsKey("TRADE_TYPE_CODE") ){
+					tradeTypeCode1 = $.cssubmit.tradeData.get("TRADE_TYPE_CODE");
+				}
+				//新增代办按钮,开户、过户、换卡、实名补录、客户资料变更、复机等需实名认证的业务不需要代办
+				if (tradeTypeCode1) {
+				if(tradeTypeCode1!="100"&&tradeTypeCode1!="142"&&tradeTypeCode1!="66"&&tradeTypeCode1!="10"&&tradeTypeCode1!="11"&&tradeTypeCode1!="15"&&tradeTypeCode1!="60"&&tradeTypeCode1!="310"){
+				msgArr.push('<button  onclick=\"javascript:$.cssubmit.commission();\" id="commission" class=\"e_button-page\"><i class=\"e_ico-print\"></i><span>代办</span></button>');	
+				}
+				}
+				}
+				catch(e){alert(e);}
+				//end 添加代办按钮	
+				//打印按钮
+				if(isPrint){
+					msgArr.push('<button  onclick=\"javascript:$.cssubmit.printTrade();\" id="PRINT_BUTTON" class=\"e_button-page\"><i class=\"e_ico-print\"></i><span>打印</span></button>');
+					//if($("#CSSUBMIT_BUTTON").attr("isGrp")!="true"){
+					//}
+				}
+				//------购物车
+				if($.cssubmit.clickButton=="addShoppingCart"){
+					   msgArr.push('<button class="'+	(judgeTrade ? "e_button-page-cancel" : "e_button-page-ok")	+'" onclick="javascript:$.cssubmit.closeMessage('+(judgeTrade ? "" : "true")+');">	');
+					   msgArr.push('<i class="e_ico-pre"></i><span>'	+(judgeTrade? "关闭" : "继续办理业务")+	'</span></button>	 ');
+					   msgArr.push('<button  onclick=\"javascript:$.cssubmit.goShopping();\" class=\"e_button-page\"><i class=\"e_ico-aft\"></i><span>去结算</span></button>');
+				}else{
+				   if($.cssubmit.orderPayFlag){//支付成功
+					   msgArr.push('<button class="'+	(judgeTrade ? "e_button-page-cancel" : "e_button-page-ok")	+'" onclick="javascript:$.cssubmit.promptOut('+(judgeTrade ? "" : "true")+');">	');
+					   msgArr.push('<i></i><span>'	+(judgeTrade? "关闭" : "确定")+	'</span></button>	 ');
+				   }else{
+					   //msgArr.push('<button class="e_button-page-ok" onclick="javascript:$.cssubmit.closeMessage(true);">	');
+					   //msgArr.push('<i></i><span>'	+("确定")+	'</span></button>	 ');
+				   }	
+				}
+				//------购物车
+	
+			
+				//显示开具设置按钮
+				//start 添加开具电子发票推送信息设置按钮
+				debugger;
+				try{
+					
+					if($.cssubmit.tradeData instanceof $.DatasetList){
+						$.cssubmit.tradeData = $.cssubmit.tradeData.get(0);
+					}else if($.cssubmit.tradeData instanceof $.DataMap){
+						$.cssubmit.tradeData = $.cssubmit.tradeData;
+					}
+					var tradeTypeCode;
+					if($.auth){
+						tradeTypeCode= $("#TRADE_TYPE_CODE").val();
+					}else if( $.cssubmit.tradeData && $.cssubmit.tradeData.containsKey("ORDER_TYPE_CODE") ){
+						tradeTypeCode = $.cssubmit.tradeData.get("ORDER_TYPE_CODE");
+					}else if( $.cssubmit.tradeData && $.cssubmit.tradeData.containsKey("TRADE_TYPE_CODE") ){
+						tradeTypeCode = $.cssubmit.tradeData.get("TRADE_TYPE_CODE");
+					}
+				if (tradeTypeCode) {
+					$.cssubmit.getTradeTypeKjConf(tradeTypeCode);
+					if ($.cssubmit.commData.get("CAN_SET_EPRINTCEPT_CONF") && "TRUE"==$.cssubmit.commData.get("CAN_SET_EPRINTCEPT_CONF")){
+						if($.printMgr.userRecptSvcConf.custType != "GRP"){
+							msgArr.push('<button  onclick=\"javascript:$.cssubmit.openKJConf();\" class=\"e_button-page\"><i class=\"e_ico-print\"></i><span>开具设置</span></button>');
+						}else{							
+							msgArr.push('<button  onclick=\"javascript:$.cssubmit.openGrpKJConf();\" class=\"e_button-page\"><i class=\"e_ico-print\"></i><span>开具设置</span></button>');
+						}
+					}						
+				}
+				}catch(e){alert(e);}
+				//end 添加开具推送信息配置按钮			
+				if($.cssubmit.customizeBtns){
+					var name,icon;
+					var btns = $.cssubmit.customizeBtns;
+					for(var i=0; i<btns.length; i++){
+						if(!btns[i]["name"]) continue;
+						name = btns[i]["name"];
+						icon = btns[i]["icon"]=""?"":"e_ico-"+btns[i]["icon"];
+						msgArr.push('<button  onclick=\"javascript:$.cssubmit.customizeBtnEvent('+i+');\" class=\"e_button-page\"><i class=\"'+icon+'\"></i><span>'+name+'</span></button>');						
+					}
+				}
+				msgArr.push('</div>	');
+				msgArr.push('</div></div>	');
+				msgArr.push('<div class="c_popupBottom"><div></div></div>	');
+				msgArr.push('<div class="c_popupShadow"></div>	');
+				msgArr.push('</div>	');
+				msgArr.push('</div>	');
+				msgArr.push('<iframe class="c_popupFrame"></iframe>	');
+				msgArr.push('<div class="c_popupCover"></div>	');
+				msgArr.push('</div>	');
+				
+				$(document.body).append(msgArr.join(""));
+				msgPanel = $("#SUBMIT_MSG_PANEL");
+				msgArr=null;
+			}
+			if (msgPanel.length) {
+				var t = $("#SUBMIT_MSG_TITLE");
+				if (t.length) {
+					t.html((title ? title : ""));
+				}
+				var e = $("#SUBMIT_MSG_CONTENT");
+				if (e.length) {
+					e.html((content ? ("" + content).replace(/\n/ig, "<br />") : ""));
+				}
+				msgPanel.css("display", "");
+			}
+			msgPanel = null;
+			
+			if($("#CSSUBMIT_BUTTON").attr("isGrp")=="true"){
+				return;
+			}
+			
+			var tradeData;
+			var tradeInfo = $.cssubmit.tradeData;
+			if(!tradeInfo)return;
+			if(tradeInfo instanceof $.DatasetList){
+				tradeData = tradeInfo.get(0);
+			}else if(tradeInfo instanceof $.DataMap){
+				tradeData = tradeInfo;
+			}
+			$.printMgr.params.put("ORDER_ID", tradeData.get("ORDER_ID"));
+           	$.printMgr.params.put("TRADE_ID", tradeData.get("TRADE_ID"));
+           	$.printMgr.params.put("EPARCHY_CODE", tradeData.get("DB_SOURCE"));
+			if(!isPrint){
+				//没打印数据的时候或者不打印的时候也要调用触点营销
+            	if(tradeData.get("ORDER_ID") && tradeData.get("TRADE_ID") && tradeData.get("DB_SOURCE")){
+            		$.printMgr.contactMarketOpen(true);
+            	}
+			}else{
+				//有打印按钮
+				$.cssubmit.printTrade();
+				
+//				MessageBox.confirm("确认提示", "是否要打印？", 
+//                    function(btn){
+//                        if(btn == "ok"){
+//                        	$.cssubmit.printTrade();
+//                        }else{
+//                        	if(tradeData.get("ORDER_ID") && tradeData.get("TRADE_ID") && tradeData.get("DB_SOURCE")){
+//			            		$.printMgr.contactMarketOpen(true);
+//			            	}
+//                        }
+//                    }
+//	            );           
+			}
+		},
+		
+		//电子受理单
+		scanData: function(){
+			var tradeData;
+			var tradeInfo = $.cssubmit.tradeData;
+			if(!tradeInfo)return;
+			if(tradeInfo instanceof $.DatasetList){
+				tradeData = tradeInfo.get(0);
+			}else if(tradeInfo instanceof $.DataMap){
+				tradeData = tradeInfo;
+			}
+			var orderId = tradeData.get("ORDER_ID");
+			var tradeId = tradeData.get("TRADE_ID");
+			var eparchyCode = tradeData.get("DB_SOURCE");
+			//实际传的是order_type_code
+		    var tradeTypeCode = tradeData.get("ORDER_TYPE_CODE"); 
+		    var checkMode;
+			//有公用参数
+			if($.cssubmit.commData){
+				checkMode = $.cssubmit.commData.get("CHECK_MODE");
+			}
+			if(!checkMode || (checkMode && checkMode=="F")){
+				checkMode = "0";//无认证方式
+			}
+			
+			
+			//如果存在打印数据，则直接打印，否则重新加载打印数据
+            var infos = $.printMgr.getPrintData();
+            if(infos && infos.length){
+                //存在打印数据,直接打开电子受理单的界面
+                var paramTemp = "&TRADE_ID="+tradeId+"&ORDER_ID="+orderId+"&CHECK_MODE="+checkMode+"&TRADE_TYPE_CODE="+tradeTypeCode+"&EPARCHY_CODE="+eparchyCode;
+		   		openNav('受理单代理页面','epaper.trade.EpaperProxy', 'initial', paramTemp);
+                return;
+            }
+            
+            if(!tradeData && tradeData.length) return;
+            //登记成功以后，可能返回的地州编码键值是DB_SOURCE，这里做一下特殊处理
+            if(tradeData.containsKey("DB_SOURCE")){
+                tradeData.put("EPARCHY_CODE", tradeData.get("DB_SOURCE"));
+                //tradeData.removeKey("DB_SOURCE");
+            }
+            
+            // 集团打印标志
+            var grpPrint = "0";
+            if(tradeData.containsKey("GRP_PRINT")){
+                grpPrint = tradeData.get("GRP_PRINT");
+            }
+                      
+            //拼接打印查询入参
+            var param = "&ACTION=PRINT";
+            tradeData.eachKey(function(key,index,totalcount){
+                param += "&"+key+"="+tradeData.get(key);
+            });
+            
+            if($.printMgr.printParam && $.printMgr.printParam.length){
+                param += "&PRINT_PARAMS="+encodeURIComponent($.printMgr.printParam.toString());
+            }
+            if(top.document.getElementById("staffId") && top.$){
+                param += "&NGBOSS_STAFF_ID="+top.$("#staffId").val();
+            }
+            if($("#TRADE_TYPE_CODE").val())
+            {
+                param += "&TRADE_TYPE_CODE="+$("#TRADE_TYPE_CODE").val();
+            }
+            
+            $.beginPageLoading("加载打印数据。。。");
+            ajaxSubmit(null, null, param, $.cssubmit.componentId, 
+                function(data){
+                    $.endPageLoading();
+                    var paramData = "&TRADE_ID="+tradeId+"&ORDER_ID="+orderId+"&CHECK_MODE="+checkMode+"&TRADE_TYPE_CODE="+tradeTypeCode+"&EPARCHY_CODE="+eparchyCode;
+		    		openNav('受理单代理页面','epaper.trade.EpaperProxy', 'initial', paramData); 
+                },
+                function(code, info, detail){
+                    $.endPageLoading();
+                    MessageBox.alert("错误提示","加载打印数据错误！", null, null, info, detail);
+                },function(){
+                    $.endPageLoading();
+                    MessageBox.alert("告警提示","加载打印数据超时！");
+            }); 
+		},
+		
+		
+		//Aaron新增一体机下单按钮
+		oneUnit:function(){
+			var tradeData;
+			var serialNumber;
+			var param;
+			var tradeInfo = $.cssubmit.tradeData;
+			if(!tradeInfo)return;
+			if(tradeInfo instanceof $.DatasetList){
+				tradeData = tradeInfo.get(0);
+			}else if(tradeInfo instanceof $.DataMap){
+				tradeData = tradeInfo;
+			}
+			var orderId = tradeData.get("ORDER_ID");
+			var tradeId = tradeData.get("TRADE_ID");
+			var eparchyCode = tradeData.get("DB_SOURCE");
+			//实际传的是order_type_code
+		    var tradeTypeCode = tradeData.get("ORDER_TYPE_CODE");   
+		    if(""==tradeTypeCode || null==tradeTypeCode){
+		    	tradeTypeCode = tradeData.get("TRADE_TYPE_CODE");
+		    }
+		    
+		    var userId = tradeData.get("USER_ID");
+		    var checkMode;
+			//有公用参数
+			if($.cssubmit.commData){
+				checkMode = $.cssubmit.commData.get("CHECK_MODE");
+			}
+			if(!checkMode || (checkMode && checkMode=="F")){
+				checkMode = "0";//无认证方式
+			}
+
+            //登记成功以后，可能返回的地州编码键值是DB_SOURCE，这里做一下特殊处理
+            if(tradeData.containsKey("DB_SOURCE")){
+                tradeData.put("EPARCHY_CODE", tradeData.get("DB_SOURCE"));
+                //tradeData.removeKey("DB_SOURCE");
+            }
+            
+            //获取用户手机号AUTH_SUBMIT_BTN
+            var bossId =null;
+            if($.auth && $.auth.getAuthData()){
+				var user=$.auth.getAuthData().get("USER_INFO");
+	             bossId=$("#AUTH_SUBMIT_BTN").attr("bossId");
+	             //换卡应用需要取界面上的认证流水号
+	            if(bossId=="" || bossId ==null || tradeTypeCode=="142"){
+	            	
+					   bossId=$("#TRANSACTION_ID").val();
+
+	            	// bossId=$.auth.getAuthData().get("bossId");
+
+				   if(bossId=="" || bossId ==null){
+
+					  // bossId=$("#TRANSACTION_ID").val();
+					  bossId=$.auth.getAuthData().get("bossId");
+				   }
+	            }
+				if(user && user.get("SERIAL_NUMBER")){
+					serialNumber = user.get("SERIAL_NUMBER");
+				}
+			}else if(tradeData.get("SERIAL_NUMBER")){
+				    serialNumber = tradeData.get("SERIAL_NUMBER");
+
+					   if(bossId=="" || bossId ==null){
+
+						   bossId=$("#TRANSACTION_ID").val();
+						   
+						   if(bossId=="" || bossId ==null){
+
+								  // bossId=$("#TRANSACTION_ID").val();
+								  bossId=$.auth.getAuthData().get("bossId");
+							   }
+					   }
+			        
+			}else{//开户无auth组件，只能从页面上取
+				    serialNumber = $("#SERIAL_NUMBER").val();
+				    
+				      //页面上无SERIAL_NUMBER，则取cond_SERIAL_NUMBER
+				      if(serialNumber=="" || serialNumber ==null){
+				      	serialNumber = $("#cond_SERIAL_NUMBER").val();
+				    	}
+				      
+					   if(bossId=="" || bossId ==null){
+
+						   bossId=$("#TRANSACTION_ID").val();
+					   }
+					  
+			            	
+			}
+       
+            if(!bossId){
+            	if($.topPersonLogin){
+            		bossId = $.topPersonLogin.getTransactionId();
+    	    	}
+            }
+		 var  bossId2=$("#TRANSACTION_ID2").val();
+             param += "&ACTION=ONE_UNIT&TRADE_ID="+tradeId+"&ORDER_ID="+orderId+"&CHECK_MODE="+checkMode+"&TRADE_TYPE_CODE="+tradeTypeCode+"&EPARCHY_CODE="+eparchyCode
+            +"&TRADE_DATA="+tradeData+"&SERIAL_NUMBER="+serialNumber+"&USER_ID="+userId+"&bossId="+bossId+"&bossId2="+bossId2;           
+
+             ajaxSubmit(null, null, param, $.cssubmit.componentId, 
+		                function(data){
+		                    $.endPageLoading();
+		                    if(data.get("FLAG") == "1"){
+								MessageBox.alert("一体机下单提示","一体机下单成功！");
+		                    }else{
+								MessageBox.alert("一体机下单提示","一体机下单失败！");
+		                    }
+		                },
+		                function(code, info, detail){
+		                    $.endPageLoading();
+							MessageBox.alert("告警提示","一体机下单失败！");
+		            });
+			
+
+
+          
+		},
+		
+		//新增代办按钮
+		commission:function(){
+			var tradeData;
+			var serialNumber;
+			var param;
+			var tradeInfo = $.cssubmit.tradeData;
+			if(!tradeInfo)return;
+			if(tradeInfo instanceof $.DatasetList){
+				tradeData = tradeInfo.get(0);
+			}else if(tradeInfo instanceof $.DataMap){
+				tradeData = tradeInfo;
+			}
+			var orderId = tradeData.get("ORDER_ID");
+			var tradeId = tradeData.get("TRADE_ID");
+			var eparchyCode = tradeData.get("DB_SOURCE");
+			//实际传的是order_type_code
+		    var tradeTypeCode = tradeData.get("ORDER_TYPE_CODE");   
+		    if(""==tradeTypeCode || null==tradeTypeCode){
+		    	tradeTypeCode = tradeData.get("TRADE_TYPE_CODE");
+		    }
+		    
+		    var userId = tradeData.get("USER_ID");
+		    var checkMode;
+			//有公用参数
+			if($.cssubmit.commData){
+				checkMode = $.cssubmit.commData.get("CHECK_MODE");
+			}
+			if(!checkMode || (checkMode && checkMode=="F")){
+				checkMode = "0";//无认证方式
+			}
+
+            //登记成功以后，可能返回的地州编码键值是DB_SOURCE，这里做一下特殊处理
+            if(tradeData.containsKey("DB_SOURCE")){
+                tradeData.put("EPARCHY_CODE", tradeData.get("DB_SOURCE"));
+                //tradeData.removeKey("DB_SOURCE");
+            }
+            
+            //获取用户手机号AUTH_SUBMIT_BTN
+            var bossId =null;
+            if($.auth && $.auth.getAuthData()){
+				var user=$.auth.getAuthData().get("USER_INFO");
+	             bossId=$("#AUTH_SUBMIT_BTN").attr("bossId");
+	            if(bossId=="" || bossId ==null){
+	            	
+					   bossId=$("#TRANSACTION_ID").val();
+
+	            	// bossId=$.auth.getAuthData().get("bossId");
+
+				   if(bossId=="" || bossId ==null){
+
+					  // bossId=$("#TRANSACTION_ID").val();
+					  bossId=$.auth.getAuthData().get("bossId");
+				   }
+	            }
+				if(user && user.get("SERIAL_NUMBER")){
+					serialNumber = user.get("SERIAL_NUMBER");
+				}
+			}else if(tradeData.get("SERIAL_NUMBER")){
+				    serialNumber = tradeData.get("SERIAL_NUMBER");
+
+					   if(bossId=="" || bossId ==null){
+
+						   bossId=$("#TRANSACTION_ID").val();
+						   
+						   if(bossId=="" || bossId ==null){
+
+								  // bossId=$("#TRANSACTION_ID").val();
+								  bossId=$.auth.getAuthData().get("bossId");
+							   }
+					   }
+			        
+			}else{//开户无auth组件，只能从页面上取
+				    serialNumber = $("#SERIAL_NUMBER").val();
+				    
+				      //页面上无SERIAL_NUMBER，则取cond_SERIAL_NUMBER
+				      if(serialNumber=="" || serialNumber ==null){
+				      	serialNumber = $("#cond_SERIAL_NUMBER").val();
+				    	}
+				      
+					   if(bossId=="" || bossId ==null){
+
+						   bossId=$("#TRANSACTION_ID").val();
+					   }
+
+			            	
+			}
+            
+             param += "&ACTION=ONE_UNIT&TRADE_ID="+tradeId+"&ORDER_ID="+orderId+"&CHECK_MODE="+checkMode+"&TRADE_TYPE_CODE="+tradeTypeCode+"&EPARCHY_CODE="+eparchyCode
+            +"&TRADE_DATA="+tradeData+"&SERIAL_NUMBER="+serialNumber+"&USER_ID="+userId+"&BOSSID="+bossId;           
+             openNav("代办身份验证", "epaper.trade.EpaperComm","init", param);
+		},
+		
+		//-----购物车
+		goShopping : function(){
+			var param = "&AUTO_AUTH=true&DISABLED_AUTH=true&SERIAL_NUMBER=";
+			  if($.auth && $.auth.getAuthData()){
+				 var user=$.auth.getAuthData().get("USER_INFO");
+				 if(user && user.get("SERIAL_NUMBER")){
+				    param += user.get("SERIAL_NUMBER");
+				    param += "&ROUTE_EPARCHY_CODE="+user.get("EPARCHY_CODE");
+				    param += "&USER_ID="+user.get("USER_ID");
+				 }
+			  }
+			  openNav("购物车", "shopping.ShoppingCart","", param);
+			},
+		//-----购物车
+		exeCashbox : function(dataId, sn, fnSucss, fnFail) {
+			beginPageLoading("正进行金库认证..");
+			$.treasury.auth(dataId, sn, function(ret) {
+				endPageLoading();
+				if (true === ret) {
+					if (typeof (fnSucss) == "function") {
+						fnSucss();
+					}
+				} else {
+					if (typeof (fnFail) == "function") {
+						fnFail();
+					}
+				}
+			});
+		}
+	}});
+	
+	//执行初始化方法，将事件绑定到提交按钮上
+	$($.cssubmit.init);
+	window.flowSubmit = $.cssubmit.windowFlowSubmit;
+})(Wade);

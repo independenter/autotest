@@ -1,0 +1,825 @@
+(function($){
+    $.extend({printMgr:{
+        printData:$.DatasetList(),
+        printIndex: null,       //打印索引
+        params: $.DataMap(),    //[PRT_TYPE,EPARCHY_CODE,ORDER_ID]
+        printEvent: null,       //打印事件
+        printParam: $.DataMap(),    //打印个性化参数
+        printCallBack: null, // 打印成功回调方法
+        
+        isShowConSaleFlag:false,
+        
+        //设定打印事件
+        bindPrintEvent:function(func){
+            $.printMgr.printEvent = func;
+        },
+        //设置特殊自定义打印参数
+        addPrintParam:function(paramData){
+            if(!paramData || !paramData.length){
+                return;
+            }
+            paramData.eachKey(function(key, idx, total){
+                $.printMgr.printParam.put(key, paramData.get(key));
+            });
+        },
+        setPrintParam:function(key, value){
+            if(!key || !value) return ;
+            $.printMgr.printParam.put(key, value);
+        },
+        
+        setPrintCallBack:function(fn){
+            if(fn){
+                $.printMgr.printCallBack = fn;
+            }
+        },
+        
+        /**
+         * 获取打印数据,主要是在业务登记完成之后调用
+         * data[ORDER_ID, EPARCHY_CODE, GRP_PRINT, CHECK_MODE, CHECK_DESC, TRADE_TYPE_CODE]
+         * GRP_PRINT为集团标记个人这边没有，
+         * CHECK_MODE 认证校验方式，CHECK_DESC认证校验方式描述
+         * TRADE_ID 该键值自定义的打印，可能会传入，后续在一单清，票据查询，更新打印标记时候，会做特殊处理
+         */
+        printTrade : function(tradeData, func){
+            //如果存在打印数据，则直接打印，否则重新加载打印数据
+            var infos = $.printMgr.getPrintData();
+            if(infos && infos.length){
+                if(func){
+                    func(tradeData);
+                    return;
+                }
+                $.printMgr.resetPrintFlag();    //重置打印轮询标记
+                $.printMgr.printReceipt();      //启动缓存打印数据
+                return;
+            }
+            
+            if(!tradeData && tradeData.length) return;
+            
+            //携号特殊处理
+            if($.printMgr.printParam && $.printMgr.printParam.length &&
+            		$.printMgr.printParam.containsKey("NP_IN_EPARCHY_CODE")){
+            	tradeData.put("EPARCHY_CODE", $.printMgr.printParam.get("NP_IN_EPARCHY_CODE"));
+            }else{
+            	//登记成功以后，可能返回的地州编码键值是DB_SOURCE，这里做一下特殊处理
+	            if(tradeData.containsKey("DB_SOURCE")){
+	                tradeData.put("EPARCHY_CODE", tradeData.get("DB_SOURCE"));
+	                //tradeData.removeKey("DB_SOURCE");
+	            }
+            }
+            
+            // 集团打印标志
+            var grpPrint = "0";
+            
+            if(tradeData.containsKey("GRP_PRINT")){
+                grpPrint = tradeData.get("GRP_PRINT");
+            }
+            
+            if("1" == grpPrint)
+            {
+           		var printDatas = null;
+                   
+                printDatas = tradeData.get("PRINT_DATA");
+                
+                $.printMgr.setPrintData(printDatas);
+
+                //公共参数数据
+                $.printMgr.params.put("ORDER_ID", tradeData.get("ORDER_ID"));
+                $.printMgr.params.put("TRADE_ID", tradeData.get("TRADE_ID"));
+                $.printMgr.params.put("EPARCHY_CODE", tradeData.get("EPARCHY_CODE"));
+                $.printMgr.params.put("GRP_PRINT", grpPrint);
+                //统一打印的权限
+                $.printMgr.params.put("ONE_NOTE", tradeData.get("ONE_NOTE"));
+                
+                //如果有回调处理，则直接返回，不进行打印
+                if(func){
+                    func(tradeData);
+                    return;
+                }
+                //启动打印
+                $.printMgr.printReceipt();
+                return;
+            }
+            
+            //拼接打印查询入参
+            var param = "&ACTION=PRINT";
+            tradeData.eachKey(function(key,index,totalcount){
+                param += "&"+key+"="+tradeData.get(key);
+            });
+            
+            if($.printMgr.printParam && $.printMgr.printParam.length){
+                param += "&PRINT_PARAMS="+encodeURIComponent($.printMgr.printParam.toString());
+            }
+            if(top.document.getElementById("staffId") && top.$){
+                param += "&NGBOSS_STAFF_ID="+top.$("#staffId").val();
+            }
+            if($("#TRADE_TYPE_CODE").val())
+            {
+                param += "&TRADE_TYPE_CODE="+$("#TRADE_TYPE_CODE").val();
+            }
+            
+            $.beginPageLoading("加载打印数据。。。");
+            ajaxSubmit(null, null, param, $.cssubmit.componentId, 
+                function(data){
+                    $.endPageLoading();
+                    
+                    //设置打印数据
+                    var printDatas = null;
+                    
+                    printDatas = data.get("PRINT_DATA");
+                    
+                    $.printMgr.setPrintData(printDatas);
+
+                    //公共参数数据
+                    $.printMgr.params.put("ORDER_ID", tradeData.get("ORDER_ID"));
+                    $.printMgr.params.put("TRADE_ID", tradeData.get("TRADE_ID"));
+                    $.printMgr.params.put("EPARCHY_CODE", tradeData.get("EPARCHY_CODE"));
+                    $.printMgr.params.put("GRP_PRINT", grpPrint);
+                    //统一打印的权限
+                    $.printMgr.params.put("ONE_NOTE", data.get("ONE_NOTE"));
+                    
+                    //如果有回调处理，则直接返回，不进行打印
+                    if(func){
+                        func(tradeData);
+                        return;
+                    }
+                    //启动打印
+                    $.printMgr.printReceipt();
+                },
+                function(code, info, detail){
+                    $.endPageLoading();
+                    MessageBox.alert("错误提示","加载打印数据错误！", null, null, info, detail);
+                },function(){
+                    $.endPageLoading();
+                    MessageBox.alert("告警提示","加载打印数据超时！");
+            }); 
+        },
+        
+        // 集团打印
+        grpPrintTrade : function(data){
+            data.put("GRP_PRINT", "1");
+            $.printMgr.printTrade(data, null);
+        },
+        
+        //设置保存打印数据
+        setPrintData : function(infos){
+            $.printMgr.printData = infos;
+        },
+        //获取打印数据
+        getPrintData : function(){
+            return $.printMgr.printData;
+        },
+        
+
+		//调开具接口打印电子发票
+		printReceipt4KAIJU: function(printInfo,printDoc,channl){
+			if(!printDoc || printDoc.length <= 0){
+				MessageBox.alert("告警提示", "系统检索不到打印数据！");
+				return;
+			}
+			
+			debugger;
+			
+			var userId=null;
+			if($.auth && $.auth.getAuthData()){
+				var user=$.auth.getAuthData().get("USER_INFO");
+				if(user){
+					userId=user.get("USER_ID");
+				}
+			} else if ($.cssubmit.tradeData && $.cssubmit.tradeData.containsKey("USER_ID")) {
+				userId=$.cssubmit.tradeData.get("USER_ID");
+			}		
+			
+			//PRINT_ID:打印数据源备案ID;
+			var param="&ACTION=PRINT_KJ";
+			param+="&APPLY_CHANNEL="+channl; //开票发起渠道：：0-营业个人业务;1-集团有ACCTID业务；2-集团无ACCTID业务；3-账务
+			param+="&USER_ID="+userId;
+			//param+= "&EPARCHY_CODE="+$.printMgr.params.get("EPARCHY_CODE");
+			param+="&TYPE="+printInfo.get("TYPE")+"&PRINT_ID="+printInfo.get("PRINT_ID")+"&NAME="+printInfo.get("NAME");
+			param+="&RECEIVER_SENDWAY="+$.printMgr.userRecptSvcConf.sendWay+"&RECEIVER_MOBILE="+$.printMgr.userRecptSvcConf.receiverMobile+"&RECEIVER_EMAIL="+$.printMgr.userRecptSvcConf.receiverEmail;
+			var PRINT_DATA_SOURCE_BAK = printDoc.get("PRINT_DATA_SOURCE_BAK");			
+			if (PRINT_DATA_SOURCE_BAK && PRINT_DATA_SOURCE_BAK.length!=0) {
+				PRINT_DATA_SOURCE_BAK.eachKey(function(key, idx, total){
+					param += "&"+key+"="+PRINT_DATA_SOURCE_BAK.get(key);
+				});
+			}			
+			$.beginPageLoading("加载开具打印数据。。。");
+			ajaxSubmit(null, null, param, $.cssubmit.componentId, 
+				function(data){
+					$.endPageLoading();					
+					if(data){
+						if (data.get("RESULT_CODE")=="0000") {
+							MessageBox.alert("成功提示","加载开具打印数据成功！");
+						}
+					}
+				},
+				function(code, info, detail){
+					$.endPageLoading();
+					MessageBox.error("错误提示","加载开具打印数据错误！", null, null, info, detail);
+				},function(){
+					$.endPageLoading();
+					MessageBox.alert("告警提示","加载开具打印数据超时！");
+			});	
+		},
+		
+		//用户的营业电子发票推送信息配置: hadGot(是否已获取)  hadTips(是否已咨询提示)  sendWay(推送方式)  receiverMobile(推送手机)  receiverEmail(推送邮箱)  isERecept(是否电子开具)
+		userRecptSvcConf: {hadGot:false, hadTips:false, serviceId:null, sendWay: null, receiverMobile: null, receiverEmail: null, isERecept: null,custType:"PERSON"},
+		
+		//获取用户的开具推送信息
+		getUserRecptSvcConf: function(func){
+			if ($.printMgr.userRecptSvcConf.hadGot == false) {				
+				var userId=null;
+				var eparchyCode = null;
+				var pinfos = $.printMgr.getPrintData();
+			    if(!pinfos || pinfos.length == 0){
+				MessageBox.alert("告警提示", "系统检索不到打印数据！");
+				return;
+			    }
+			    var pinfo = pinfos.get(0);
+				if($.auth && $.auth.getAuthData()){
+					var user=$.auth.getAuthData().get("USER_INFO");
+					if(user){
+						userId=user.get("USER_ID");
+						eparchyCode=user.get("EPARCHY_CODE");
+					}
+				} else if ($.cssubmit.tradeData && $.cssubmit.tradeData.containsKey("USER_ID")) {
+					userId=$.cssubmit.tradeData.get("USER_ID");
+					eparchyCode=$.cssubmit.tradeData.get("EPARCHY_CODE");
+				} else if (pinfo && pinfo.containsKey("USER_ID")) {//重打从print info中取
+					userId = pinfo.get("USER_ID");
+					eparchyCode = pinfo.get("EPARCHY_CODE");
+				}
+								
+				if (!userId || userId==null || userId.length==0) {
+					MessageBox.alert("告警提示","未获取到用户信息！");
+					return ;
+				}
+				
+				var param = "&ACTION=GET_ERECEPT_SEND_CONF";
+				param += "&USER_ID="+userId;
+				if (!eparchyCode || eparchyCode.length<2){
+					var dataTmp = null;
+					if($.cssubmit.tradeData instanceof $.DatasetList){
+						dataTmp = $.cssubmit.tradeData.get(0);
+					}else if($.cssubmit.tradeData instanceof $.DataMap){
+						dataTmp = $.cssubmit.tradeData;
+					}				
+					if(dataTmp.containsKey("DB_SOURCE")){
+						eparchyCode = dataTmp.get("DB_SOURCE");
+					}
+				}
+				if (eparchyCode && eparchyCode.length>0) {
+					param += "&EPARCHY_CODE="+eparchyCode;
+				}
+				$.beginPageLoading("加载用户的营业电子发票推送信息数据。。。");			
+				ajaxSubmit(null, null, param, $.cssubmit.componentId, 
+							function(data){
+								$.endPageLoading();
+								if(data){
+									$.printMgr.userRecptSvcConf.sendWay = data.get("RECEIVER_SENDWAY");
+									$.printMgr.userRecptSvcConf.receiverMobile = data.get("RECEIVER_MOBILE");
+									$.printMgr.userRecptSvcConf.receiverEmail = data.get("RECEIVER_EMAIL");
+									
+									$.printMgr.userRecptSvcConf.hadGot = true;
+									if ($.printMgr.userRecptSvcConf.sendWay) {
+										$.printMgr.userRecptSvcConf.isERecept = "TRUE"; //湖南是以用户是否存在日常营业设置来决定是否打电子发票
+									}
+								}
+							},
+							function(code, info, detail){
+								$.endPageLoading();
+								MessageBox.error("错误提示","加载用户的营业电子发票推送信息数据报错！", null, null, info, detail);
+								$.printMgr.userRecptSvcConf.hadGot = true;
+							},/*function(){
+								$.endPageLoading();
+								MessageBox.alert("告警提示","加载用户的营业电子发票推送信息数据超时！");
+								$.printMgr.userRecptSvcConf.hadGot = true;
+							}, */{
+								"async" : false  //必须第七个参数
+							});	
+			}			
+		},
+		
+		//启动打印前，咨询打印方式选择:是纸质打印还是电子打印.
+		switchBeforeStartupPrint: function(printInfo, printDoc) {
+			debugger;
+			var printType=printInfo.get("TYPE");				
+			if(printType && printType.indexOf("01")> -1) {//发票打印:选择纸质打印还是电子打印
+				if ($.printMgr.userRecptSvcConf.isERecept && $.printMgr.userRecptSvcConf.isERecept!= null && $.printMgr.userRecptSvcConf.isERecept.length>0){//走电子打印接口
+					//$.printMgr.printReceipt4KAIJU(printInfo,printDoc);
+					if($.printMgr.userRecptSvcConf.custType == "GRP"){//政企客户集团电子发票开具
+						var channl = "1";
+						$.printMgr.printReceipt4KAIJU(printInfo,printDoc,channl);
+					}
+					else{//个人客户电子发票开具
+						var channl = "0";
+						$.printMgr.printReceipt4KAIJU(printInfo,printDoc,channl);
+					}
+				} else { //咨询是否电子打印还是纸质打印？？已经咨询过，则无需重复咨询。  //如果未配置，可能是用户默认纸质打印，也有可能是未配置。//这里不做咨询，默认为纸质打印
+					$.printMgr.startupPrint(printDoc);
+				}
+			} else {//非发票打印，走原逻辑
+				$.printMgr.startupPrint(printDoc);
+			}
+		},
+		
+        //打印免填单
+        printReceipt: function(){
+
+			//start 同步 获取用户的营业电子发票推送信息-------------------------------------------------------------------------------------------
+			//FIXME :在遍历打印前获取用户的营业电子发票推送信息,防止后面的代码判断条件不对。
+			//FIXME :打印时才获取用户电子推送信息，是为了实时获取“业务受理后用户才设置的推送信息”，如开户后才会设置推送信息。			
+           //$.printMgr.getUserRecptSvcConf(); 			
+			//个人客户获取电子发票推送信息
+		    if("PERSON"==$.printMgr.userRecptSvcConf.custType){
+				$.printMgr.getUserRecptSvcConf(); 
+			}
+			//end   同步 获取用户的营业电子发票推送信息-------------------------------------------------------------------------------------------
+			
+        	var infos = $.printMgr.getPrintData();
+            if(!infos || infos.length == 0){
+                //MessageBox.alert("告警提示", "系统检索不到打印数据！");
+                $("#PRINT_BUTTON").css("display", "none");
+                if($("#SCAN_BUTTON") && $("#SCAN_BUTTON").length>0){
+                	$("#SCAN_BUTTON").css("display", "none");	
+                }
+                return;
+            }
+            infos.each(function(info, idx, total){
+                $.printMgr.printIndex = idx;        //记录当前打印类型
+                
+                //判断是否已经打印，如果已经打印，则不打印
+                if(info.containsKey("PRINTED") && info.get("PRINTED")=="1"){
+                    return true;
+                }
+                
+                //当前已经确认打印或问询取消则打印下一条
+                if(info.containsKey("PRT_FLAG") && info.get("PRT_FLAG") == "1"){
+                    return true;
+                }
+                $.printMgr.setPrintInfoFlag($.printMgr.printIndex, true);     //设置打印标识
+                
+                var marketFlag = false;
+                if(total == idx+1){
+                	marketFlag = true;
+                }
+                
+                var printType = info.get("TYPE");
+                if(printType.indexOf("01")!=-1 || printType.indexOf("02")!=-1){
+//                  if(info.containsKey("HAS_TICKET") && info.get("HAS_TICKET")==1)
+//                  {
+//                      var feeMode=info.get("FEE_MODE");
+//                      var feeTypeCodes=info.get("FEE_TYPE_CODES");        //数据结构=|2324|1110|345|
+//                      if(feeMode=="0" && feeTypeCodes.indexOf("|61|")>-1){
+//                          MessageBox.alert("告警提示", "买断、虚拟供货终端销售，无法打印购机款发票，请另行给客户提供发票！");
+//                          return false;
+//                      }
+//                      //获取员工单联票据                  
+//                      $.staffNote.getPrintTicketInfo(info);
+//                  $.printMgr.printWithTip(info, null, marketFlag);
+//                  }else{
+                        $.printMgr.printWithTip(info, false, marketFlag);
+//                  }
+                }else{
+                    $.printMgr.printWithTip(info, true, marketFlag);
+                }
+                return false;
+            });
+        },
+        getPrintInfoByIndex : function(idx){
+            if(idx<0) return;
+            var infos = $.printMgr.getPrintData();
+            return infos.get(idx);
+        },
+        
+        //更新打印标识
+        setPrintInfoFlag : function(idx, flag){
+            if(idx<0) return;
+            var infos = $.printMgr.getPrintData();
+            var info = infos.get(idx);
+            if(flag){
+            	info.put("PRT_FLAG", "1");	
+            }else{
+            	info.put("PRT_FLAG", "0");
+            }
+        },
+        //重置打印标识
+        resetPrintFlag:function(notePrint){
+            var printDatas = $.printMgr.getPrintData();
+            if(!printDatas || !printDatas.length){
+                return;
+            }
+            printDatas.each(function(item){
+            	//使用统一打印的话只把免填单的置为已打印,费用的若是还没打印则置为没打印
+            	if(notePrint){
+            		 var printType = item.get("TYPE");
+                	 if(printType.indexOf("01")!=-1 || printType.indexOf("02")!=-1){
+                	 	 if(item.containsKey("PRT_FLAG") && item.get("PRT_FLAG") == "1"){
+	                     	 item.put("PRT_FLAG", "1");
+	               	 	 }else{
+	               	 	 	 item.put("PRT_FLAG", "0");
+	               	 	 }
+                	 }else{
+                	 	 item.put("PRT_FLAG", "1");
+                	 }
+            	}else{
+            		item.put("PRT_FLAG", "0");	
+            	}
+            });
+        },
+        //正常问询打印
+        printWithTip:function(printInfo, prtTag, marketFlag){
+            if(printInfo){
+            	//从统一打印界面过来不展示统一打印按钮
+            	var isShowFlag = true;
+            	if($.printMgr.params.containsKey("IS_SHOW_ONENOTEPRINT")){
+	                isShowFlag = $.printMgr.params.get("IS_SHOW_ONENOTEPRINT");
+	                if(isShowFlag == "false") isShowFlag=false; 
+	            }
+            	if($.printMgr.params.containsKey("ONE_NOTE") && $.printMgr.params.get("ONE_NOTE")=="true" && prtTag && isShowFlag){
+            		$.printMgr.showOneNotePrint("是否要打印"+printInfo.get("NAME")+"？", prtTag);
+            	}else{
+            		MessageBox.confirm("确认提示", "是否要打印"+printInfo.get("NAME")+"？", 
+	                    function(btn){
+	                        if(btn == "ok"){
+	                            var printDoc = printInfo.get("PRINT_DATA");
+	                            $.printMgr.switchBeforeStartupPrint(printInfo,printDoc);
+	                            if(prtTag){
+	                            	//单个trade则更新单个trade的, 只有免填单才更新这个标记
+	                                $.printMgr.updataPrintTag(printInfo.get("TRADE_ID"));
+	                            }
+	                            if(!prtTag){
+	                            	//printInfo.put("PRINTED", "1");          //已经打印了
+	                            }
+	                        }
+	                        $.printMgr.printReceipt();
+	                        if(isShowFlag){
+	                        	$.printMgr.contactMarketOpen(marketFlag);	
+	                        }
+	                });
+            	}
+            }
+        },
+        //触点营销
+        contactMarketOpen: function(marketFlag){
+           if(this.isShowConSaleFlag) return;
+           this.isShowConSaleFlag=true;
+           if($.printMgr.params && marketFlag){
+	           	var params = "&ORDER_ID="+$.printMgr.params.get("ORDER_ID")+"&ROUTE_EPARCHY_CODE="+$.printMgr.params.get("EPARCHY_CODE")
+	           				 +"&TRADE_ID="+$.printMgr.params.get("TRADE_ID");
+	           	params += "&ACTION=CONTACT_MARKET";
+	           	//$.beginPageLoading("加载触点营销数据。。。");
+			   	ajaxSubmit(null, null, params, $.cssubmit.componentId, 
+			       function(data){
+			           //$.endPageLoading();
+			           if(data.get('RESULT_CODE_INFO')=='0'){
+			           	var param='&LOGIN_LOG_ID='+data.get('LOGIN_LOG_ID')+'&CUST_CODE='+data.get('SERIAL_NUMBER')
+			           		+'&STAFF_ID='+data.get("STAFF_ID")+'&EPARCHY_CODE='+data.get("EPARCHY_CODE")
+			           		+'&USER_ID='+data.get("USER_ID")+'&TRADE_TYPE_CODE='+data.get("TRADE_TYPE_CODE");
+//			           	window.open('/msmanm/msmanm?service=page/desktop.TouchExec&amp;listener=initPage'+param,'触点营销',
+//			           	'height=780,width=420,top=30,left=300,toolbar=no,menubar=no,scrollbars=auto,resizeable=no,location=no,status=no');
+						try{
+							$.nav.switchByTitle("欢迎");
+							$.nav.getContentWindowByTitle("欢迎").closePopPage();
+						}catch(e){
+			            }
+			           	popupPage('desktop.TouchExec','initPage',param,'触点营销',715,650,null,null,'/msmanm/msmanm');	
+			           }
+			       },
+			       function(code, info, detail){
+			           $.endPageLoading();
+			           MessageBox.alert("错误提示","加载触点营销数据错误！", null, null, info, detail);
+			       },function(){
+			           $.endPageLoading();
+			           MessageBox.alert("告警提示","加载触点营销数据超时！");
+			   }); 
+	    	}
+        },
+        
+        //单联票据打印逻辑
+        printTicket:function(flag, ticketData){
+            //如果取消则继续打印后面的免填单
+            if(flag != 0) {
+                var printInfo = $.printMgr.getPrintInfoByIndex($.printMgr.printIndex);
+                var printDoc = printInfo.get("PRINT_DATA");
+                //printInfo.put("PRINTED", "1");              //更新已经打印标记
+                if(flag> 0) {
+                    //单联票据拼接
+                    printDoc.put("TAX_NO", ticketData.get("TAX_NO"));
+                    printDoc.put("SECURITY_CODE", ticketData.get("SECURITY_CODE"));
+                    printDoc.put("TICKET_ID", ticketData.get("TICKET_ID"));
+                    printDoc.put("EWM", ticketData.get("EWM"));
+                }
+                $.printMgr.startupPrint(printDoc);
+                printDoc = null;
+                printInfo = null;
+            }
+            $.printMgr.printReceipt();
+        },
+
+        //受理单业务打印
+        printNote:function(flag, prtTag){
+            $.printMgr.hideOneNotePrint();
+            //如果取消则继续打印后面的免填单
+            if(flag != 0) {
+                var printInfo = $.printMgr.getPrintInfoByIndex($.printMgr.printIndex);
+                $.printMgr.startupPrint(printInfo.get("PRINT_DATA"));
+                //printInfo.put("PRINTED", "1");//已经打印了
+                printInfo = null;
+                if(prtTag){
+                	$.printMgr.updataPrintTag();
+                }
+            }
+            $.printMgr.printReceipt();
+            
+            //触点营销数据
+            $.printMgr.contactMarketOpen(true);	
+        },
+        //关闭一单清打印问询
+        hideOneNotePrint:function(){
+            var panel = $("#OneNote_MSG_PANEL");
+            if(panel && panel.length){
+                panel.remove();
+            }
+        },
+        //更新打印标记
+        updataPrintTag:function(tradeId) {
+            var params = "&ACTION=UPD_PRINT_TAG";
+            if(tradeId){
+            	params += "&TRADE_ID="+tradeId;  
+            }else{
+				//融合业务涉及多笔打印合并，更新打印标记根据订单编号批量处理
+	            if($.printMgr.params.containsKey("ORDER_ID")){
+	                params += "&ORDER_ID="+$.printMgr.params.get("ORDER_ID");
+	            }else if($.printMgr.params.containsKey("TRADE_ID")){
+	                params += "&TRADE_ID="+$.printMgr.params.get("TRADE_ID");                           
+	            }            	
+            }
+            params += "&EPARCHY_CODE="+$.printMgr.params.get("EPARCHY_CODE");
+            ajaxSubmit(null, null, params, $.cssubmit.componentId, 
+                function(data){
+                    //if(data && data.get("PRT_TAG_RESULT")) 
+                    //    MessageBox.success("信息提示","打印完毕!");
+                },
+                function(code, info, detail){
+                    $.endPageLoading();
+                    MessageBox.alert("错误提示","更新打印标记报错！",null, null, info, detail);
+            });
+        },
+        //弹出一单清打印查询界面
+        popupOneNotePrint:function(){
+            $.printMgr.hideOneNotePrint();
+            var params = "&ORDER_ID="+$.printMgr.params.get("ORDER_ID");
+            params += "&POP_TAG=true";
+            params += "&EPARCHY_CODE="+$.printMgr.params.get("EPARCHY_CODE");
+            if($.auth || $("#AUTH_SERIAL_NUMBER").length){
+                params += "&SERIAL_NUMBER="+$("#AUTH_SERIAL_NUMBER").val();
+            }
+            //先判断是否有需要补打的业务
+            $.popupPage('components.print.OneNotePrint', 'onInitTrade',params, '统一打印', '800', '500', "POP_PRINT_ONENOTE");
+        },
+        
+        //统一打印点击关闭按钮回调事件
+        afterPrintOneNote:function(){
+        	$.printMgr.resetPrintFlag(true);
+        	$.printMgr.printReceipt();
+        },
+        
+        /**
+         * 展示一单清提示问询窗口
+         */
+        showOneNotePrint : function(title, prtTag) {
+            var msgPanel = $("#OneNote_MSG_PANEL");
+            if (!msgPanel.length) {
+                var msgArr = [];
+                msgArr.push('<div id="OneNote_MSG_PANEL" class="c_popup">   ');
+                msgArr.push('<div class="c_popupWrapper">   ');
+                msgArr.push('<div class="c_popupHeight"></div>  ');
+                msgArr.push('<div class="c_popupBox">   ');
+                msgArr.push('<div class="c_popupTitle"> ');
+                msgArr.push('<div class="text">打印提示</div>   ');
+                msgArr.push('</div> ');
+                msgArr.push('<div class="c_popupContent"><div class="c_popupContentWrapper">    ');
+                msgArr.push('<div class="c_msg c_msg-popup">    ');
+                msgArr.push('<div class="title">'+title+'</div> ');
+                msgArr.push('<div class="c_submit"> ');
+                msgArr.push('<button id="ONE_OPRT" class="e_button-form" onclick="javascript:$.printMgr.printNote(1,'+prtTag+');"><i class="e_ico-print"></i><span>打印</span></button>  ');
+                msgArr.push('<button id="ONE_NPRT" class="e_button-form" onclick="javascript:$.printMgr.popupOneNotePrint();"><i class="e_ico-print"></i><span>统一打印</span></button>    ');
+                msgArr.push('<button id="ONE_CPRT" class="e_button-form" onclick="javascript:$.printMgr.printNote(0);"><i class="e_ico-cancel"></i><span>取消</span></button> ');
+                msgArr.push('</div> ');
+                msgArr.push('</div> ');
+                msgArr.push('</div></div>   ');
+                msgArr.push('<div class="c_popupBottom"><div></div></div>   ');
+                msgArr.push('<div class="c_popupShadow"></div>  ');
+                msgArr.push('</div> ');
+                msgArr.push('</div> ');
+                msgArr.push('<iframe class="c_popupFrame"></iframe> ');
+                msgArr.push('<div class="c_popupCover"></div>   ');
+                msgArr.push('</div> ');
+                
+                $(document.body).append(msgArr.join(""));
+                msgPanel = $("#OneNote_MSG_PANEL");
+                msgArr=null;
+            }
+            msgPanel.css("display", "");
+            msgPanel = null;
+        },
+        
+        //启动打印
+        startupPrint : function(data){
+            if(!data) return;
+            
+            try{
+				if (data.get("PRINT_DATA_SOURCE_BAK")) {//如果存在PRINT_DATA_SOURCE_BAK，则删除。
+					data.removeKey("PRINT_DATA_SOURCE_BAK");
+				}
+			}catch(e){alert("报错了");}
+			
+            //第一次进来时候，TEMP_PATH只是一个相对地址，需要加上前缀，组成全路径
+            if((data.get("TEMP_PATH")).indexOf("http")== -1){
+                //获取文档打印url地址
+                var href = window.location.href;
+                var idx = href.lastIndexOf("/?");
+                if(idx == -1){
+                    href = href.substring(0, href.indexOf("?"));
+                    idx = href.lastIndexOf("/");
+                }
+                href = href.substring(0, idx);
+                data.put("TEMP_PATH", href+"/"+data.get("TEMP_PATH"));
+            }
+            var prtDatas = $.DatasetList();
+            prtDatas.add(data);
+            var ocx = null;
+            try{
+                ocx = new ActiveXObject("Wade3Printer.Printer");
+                if(ocx){
+                    ocx.DoPrint(prtDatas.toString());
+                    
+                    if($.printMgr.printCallBack){
+                        (new Function("var data=arguments[0];" + $.printMgr.printCallBack + ";"))(prtDatas);
+                    }
+
+                }else{
+                    MessageBox.alert("告警提示", "打印控件不存在！");
+                }
+            }catch(e){
+                MessageBox.alert("告警提示","打印控件未安装或版本已升级，请到首页下载安装最新的打印控件.");
+            }
+        }
+    },
+    //员工票据
+    staffNote:{
+        repeatFlag: false,
+        ticketParam: null,  //票据参数
+        
+        //获取单联票据
+        getPrintTicketInfo:function(prtInfo){
+            if(!$.staffNote.ticketParam) $.staffNote.ticketParam = $.DataMap();
+            $.staffNote.ticketParam.clear();
+            $.staffNote.ticketParam.put("TRADE_ID", prtInfo.get("TRADE_ID"));
+            $.staffNote.ticketParam.put("TOTAL_FEE", prtInfo.get("TOTAL_FEE"));
+            $.staffNote.ticketParam.put("EPARCHY_CODE", prtInfo.get("EPARCHY_CODE"));
+            $.staffNote.ticketParam.put("SERIAL_NUMBER", prtInfo.get("SERIAL_NUMBER"));
+            $.staffNote.ticketParam.put("FEE_MODE", prtInfo.get("FEE_MODE"));
+            $.staffNote.ticketParam.put("TRADE_TYPE_CODE",prtInfo.get("TRADE_TYPE_CODE"));
+            
+            var param = "&ACTION=GET_TICKET";
+            param += "&FEE_MODE="+prtInfo.get("FEE_MODE");
+            param += "&TRADE_TYPE_CODE="+prtInfo.get("TRADE_TYPE_CODE");
+            param += "&EPARCHY_CODE="+prtInfo.get("EPARCHY_CODE");
+            if(prtInfo.containsKey("USER_EPARCHY_CODE")){
+                param += "&USER_EPARCHY_CODE="+prtInfo.get("USER_EPARCHY_CODE");
+                $.staffNote.ticketParam.put("USER_EPARCHY_CODE", prtInfo.get("USER_EPARCHY_CODE"));
+            }
+            $.beginPageLoading("加载员工票据。。。");
+            ajaxSubmit(null, null, param, $.cssubmit.componentId, 
+                function(data){
+                    $.endPageLoading();
+                    $.staffNote.createStaffNote(data, prtInfo.get("NAME"), parseInt(prtInfo.get("TOTAL_FEE"))/100);
+                },
+                function(code, info, detail){
+                    $.endPageLoading();
+                    MessageBox.alert("告警提示","获取员工票据数据错误！", null, null, info, detail);               
+            }); 
+        },
+        //创建单联票据窗口
+        createStaffNote:function(info, name, fee){
+            var cssStyle = "none";
+            if(info.get("PRIV") == "true") cssStyle="";
+            var msgPanel = $("#StaffNote_MSG_PANEL");
+            if (!msgPanel.length) {
+                var msgArr = [];
+                msgArr.push('<div id="StaffNote_MSG_PANEL" class="c_popup"> ');
+                msgArr.push('<div class="c_popupWrapper">   ');
+                msgArr.push('<div class="c_popupHeight"></div>  ');
+                msgArr.push('<div class="c_popupBox" style="width:400px">   ');
+                msgArr.push('<div class="c_popupTitle"> ');
+                msgArr.push('<div class="text">票据打印设置</div> ');
+                msgArr.push('</div> ');
+                msgArr.push('<div class="c_popupContent"><div class="c_popupContentWrapper">    ');
+                msgArr.push('<div class="c_msg c_msg-popup">    ');
+                
+                msgArr.push('   <div class="c_msg c_msg-confirm">   ');
+                msgArr.push('       <div class="title"><span>是否打印'+name+'？</span></div> ');
+                msgArr.push('   </div>  ');
+                msgArr.push('   <div class="c_form c_form-col-1  c_form-label-6">   ');
+                msgArr.push('       <ul class="ul"> ');
+                msgArr.push('           <li class="li"> ');
+                msgArr.push('               <span class="label">台账流水：</span>    ');
+                msgArr.push('               <span class="e_input"><span><input type="text" id="STAFF_TRADE_ID" value="'+$.staffNote.ticketParam.get("TRADE_ID")+'" readOnly="readOnly" /></span></span> ');
+                msgArr.push('           </li>   ');
+                msgArr.push('           <li class="li"> ');
+                msgArr.push('               <span class="label">票面金额(元)：</span> ');
+                msgArr.push('               <span class="e_input"><span><input type="text" id="STAFF_TOTAL_FEE" value="'+fee+'" readOnly="readOnly"/></span></span> ');
+                msgArr.push('           </li>   ');
+                msgArr.push('           <li class="li"> ');
+                msgArr.push('               <span class="label">税务登记号：</span>   ');
+                msgArr.push('               <span class="e_input"><span><input type="text" id="STAFF_TAX_NO" value="'+info.get("TAX_NO", "")+'" /></span></span>    ');
+                msgArr.push('           </li>   ');
+                msgArr.push('           <li class="li"> ');
+                msgArr.push('               <span class="label">票据编号：</span>    ');
+                msgArr.push('               <span class="e_input"><span><input type="text" id="STAFF_TICKET_ID" value="'+info.get("TICKET_ID", "")+'" /></span></span>  ');
+                msgArr.push('           </li>   ');
+                msgArr.push('       </ul>   ');
+                msgArr.push('   </div>  ');
+                msgArr.push('   <div class="c_submit">  ');
+                msgArr.push('       <button type="button" onclick="$.staffNote.submitPrint(1)" id="TicketPrtBtn" class="e_button-page"><i class="e_ico-print"></i><span>打印</span></button>  ');
+                msgArr.push('       <button type="button" onclick="$.staffNote.submitPrint(0)" id="TicketNonPrtBtn"  class="e_button-page-cancel"><i class="e_ico-cancel"></i><span>取消</span></button>  ');
+                msgArr.push('   </div>  ');
+                
+                msgArr.push('</div> ');
+                msgArr.push('</div></div>   ');
+                msgArr.push('<div class="c_popupBottom"><div></div></div>   ');
+                msgArr.push('<div class="c_popupShadow"></div>  ');
+                msgArr.push('</div> ');
+                msgArr.push('</div> ');
+                msgArr.push('<iframe class="c_popupFrame"></iframe> ');
+                msgArr.push('<div class="c_popupCover"></div>   ');
+                msgArr.push('</div> ');
+                
+                $(document.body).append(msgArr.join(""));
+                msgPanel = $("#StaffNote_MSG_PANEL");
+                msgArr=null;
+            }
+            msgPanel.css("display", "");
+            msgPanel = null;
+            
+        },
+        //提交单联票据打印
+        submitPrint:function(flag) {
+            if(flag < 1){
+                $("#StaffNote_MSG_PANEL").remove();
+                $.printMgr.printTicket(flag);
+                return;
+            }
+            if(!$.staffNote.chkTicketField(flag)) return;
+            if($.staffNote.repeatFlag) return;      //防止重复提交
+            $.staffNote.repeatFlag = true;
+            var ticketId = $.trim($("#STAFF_TICKET_ID").val());
+            var taxNo = $.trim($("#STAFF_TAX_NO").val());
+            var parameter = "&ACTION=CHECK_TICKET";
+            parameter += "&TAX_NO=" + $("#STAFF_TAX_NO").val();
+            parameter += "&TICKET_ID=" + ticketId;
+            var ticketData = $.staffNote.ticketParam;
+            if(ticketData && ticketData.length){
+                ticketData.eachKey(function(key, idex, total){
+                    parameter += "&"+key+"="+ticketData.get(key);
+                });
+            }
+            $.beginPageLoading("校验票据。。。");
+            ajaxSubmit(null, null, parameter, $.cssubmit.componentId,
+                function(data){
+                    $.endPageLoading();
+                    $.staffNote.repeatFlag = false;
+                    if(!data || data.get("RESULT_CODE")!="0"){
+                        MessageBox.alert("错误提示","校验票据错误！");
+                        return;
+                    }
+                    $("#StaffNote_MSG_PANEL").remove();
+                    $.printMgr.printTicket(flag, data);
+                },
+                function(code, info, detail){
+                    $.endPageLoading();
+                    $.staffNote.repeatFlag = false;
+                    MessageBox.alert("错误提示","校验票据错误！", null, null, info, detail);
+            });
+        },
+        //校验输入票据
+        chkTicketField:function(flag) {
+            if(flag<=0) return true;
+            var tax = $("#STAFF_TAX_NO").val();
+            if(tax && $.trim(tax) == "") {
+                alert("税务登记号不能为空！");
+                tax.focus();
+                return false;
+            }
+            var ticket = $("#STAFF_TICKET_ID").val();
+            if(ticket && $.trim(ticket) == "") {
+                alert("票据编号不能为空！");
+                ticket.focus();
+                return false;
+            }
+            return true;
+        }
+    }});
+
+})(Wade);

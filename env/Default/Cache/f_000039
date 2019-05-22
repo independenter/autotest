@@ -1,0 +1,787 @@
+(function($){
+	$.extend({auth:{
+		componentId:"AuthPart",
+		part : "",
+		popupHandler:"POP_AUTH_PARAMS",
+		cacheData:{},			//存放校验号码，USER_ID,三户资料
+		userListSvc:"",			//查询多用户服务，如果为空，默认取缺省CS.UserListSVC.queryUserList
+		init:function(){
+			$.auth.bindEvents();
+			$.auth.setPart();
+			var snObj = $("#AUTH_SERIAL_NUMBER");
+			//保证光标位于服务号码之后
+			snObj.focus().val(snObj.val());
+			
+			if(snObj.val()!= "") {
+				snObj.val($.trim(snObj.val()));
+			}else if(top["ESCAPE_AUTH_SN"]){
+				snObj.val(top["ESCAPE_AUTH_SN"]);
+			}else if(top["ESCAPE_AUTH_DATA"]){
+				//从统一认证界面过来
+				var dataStr = top["ESCAPE_AUTH_DATA"];
+				var data = $.DataMap(dataStr);
+				//04:宽带, 00:个人
+				var authType = $("#AUTH_SUBMIT_BTN").attr("authType");
+				if(!authType){
+					authType = "00";
+				}
+				if(authType == data.get("NET_TYPE_CODE")){
+					//宽带号码已经转成了手机号码
+					snObj.val(data.get("SERIAL_NUMBER"));
+					$("#AUTH_SUBMIT_BTN").attr("mebUserId", data.get("MEB_USER_ID"));
+					$("#AUTH_SUBMIT_BTN").attr("role", data.get("ROLE"));
+				}
+			}
+			
+			var btnObj = $("#AUTH_SUBMIT_BTN");
+			$.auth.componentId=btnObj.attr("componentId");
+			var inModeCode = btnObj.attr("inModeCode");
+			
+			//外框没登录的业务报错错
+			var verifyOuterFrameLoginFlag = btnObj.attr("verifyOuterFrameLoginFlag");
+			var verifyOuterFrameInModeCode = btnObj.attr("verifyOuterFrameInModeCode");
+			if(verifyOuterFrameLoginFlag && verifyOuterFrameLoginFlag == "check" 
+				&& verifyOuterFrameInModeCode && verifyOuterFrameInModeCode=="check"){
+				var loginFlag = false;
+				if($.topPersonLogin){
+					loginFlag = $.topPersonLogin.isLogin;
+				}
+				if(snObj.val() == '' || !loginFlag){
+					MessageBox.error("错误提示","请先去外框认证个人客户！", function(btn){
+						closeNav();
+					});
+					return;
+				}
+			}
+			
+			/**
+			* 如果是客服或设置为自动认证
+			* 则在打开页面时候，自动发起认证校验
+			* 前提条件是必须传入服务号码
+			*/
+			var autoAuth = btnObj.attr("autoAuth");
+			var disabledInput = btnObj.attr("disabledInput");
+			if(inModeCode && inModeCode == "1"){
+				//snObj.attr("disabled",true);
+				$("#PASTE_SN_BTN").css("display", "none");
+				//客服 获取号码
+				var kfsn = "";
+				var kfId = "";
+				if(window.top.getSubscriberInfo && typeof(window.top.getSubscriberInfo)=="function"
+					&& window.top.getSubscriberInfo().getBILL_ID && typeof(window.top.getSubscriberInfo().getBILL_ID)=="function"
+					&& window.top.getSubscriberInfo().getCALL_SERIAL_NO && typeof(window.top.getSubscriberInfo().getCALL_SERIAL_NO)=="function"){
+					//kfsn = window.top.getSubscriberInfo().getBILL_ID();
+					kfsn = window.top.getCustorInfo();
+					kfId = window.top.getSubscriberInfo().getCALL_SERIAL_NO();
+				}
+				
+				snObj.val(kfsn);
+				btnObj.attr("callSeqKf", kfId);
+				//autoAuth有可能为空，在客服接入时候也需要启用自动认证
+				if(autoAuth!="false") {
+					setTimeout(function(){//为了防止费用配置没加载完就去校验
+						$.auth.autoAuth();
+					},400);
+					return;
+				}	
+			}
+			if(disabledInput && disabledInput=="true"){
+				snObj.attr("disabled",true);
+			}
+			/**
+			 * 正常情况下，autoAuth=="true"才启用自动认证
+			 * 设置免认证号码情况下，如果autoAuth为空时候，表示第一次加载页面，需要启用自动认证
+			 * 如果加载报错以后，重载页面autoAuth=false,这个时候不需要进行自动认证
+			 */
+			if(autoAuth && autoAuth=="true" || (autoAuth=="" && (top["ESCAPE_AUTH_SN"] || top["ESCAPE_AUTH_DATA"]))){
+				setTimeout(function(){//为了防止费用配置没加载完就去校验
+					$.auth.autoAuth();
+				},100);
+				return;
+			}
+		},
+		
+		//绑定事件
+		bindEvents:function(){
+			//号码输入框
+			$("#AUTH_SERIAL_NUMBER").bind("keydown",$.auth.events.onSerialNumberInputKeyDown);
+			//粘贴号码
+			$("#PASTE_SN_BTN").bind("click",$.auth.events.onPasteSnClick);
+			//查询按钮
+			$("#AUTH_SUBMIT_BTN").bind("click",$.auth.events.onBtnSubmitClick); 
+		},
+		
+		//判断是否不需要认证手机号码或者已经通过验证的手机号码
+		cancelAuth:function(sn){
+			var tradeTypeCode = $("#TRADE_TYPE_CODE").val();
+			if(tradeTypeCode && (tradeTypeCode=="66" || tradeTypeCode=="812")){
+				$("#AUTH_SUBMIT_BTN").attr("disabledAuth", "false");
+				return false;
+			}
+			var inModeCode = $("#AUTH_SUBMIT_BTN").attr("inModeCode");
+			if(inModeCode && inModeCode == "3"){
+				return false;
+			}
+			
+			//$("#AUTH_SUBMIT_BTN").attr("authType")== "00" 暂时先删掉
+			//导航页面过来
+			var isAutoAuth = $("#AUTH_SUBMIT_BTN").attr("isAutoAuth");
+			if(isAutoAuth && isAutoAuth=="true"){
+				if(top["ESCAPE_AUTH_DATA"]){
+					var data = $.DataMap(top["ESCAPE_AUTH_DATA"]);
+					var serNum = data.get("SERIAL_NUMBER");
+					if(serNum == sn){
+						return true;
+					}else{
+						top["ESCAPE_AUTH_DATA"] = null;
+						return false;
+					}
+				}
+			}else if(isAutoAuth && isAutoAuth=="false"){
+				return false;
+			}
+			
+			if(top["ESCAPE_AUTH_SN"]){
+				if(top["ESCAPE_AUTH_SN"]==sn){
+					return true;
+				}else{
+					top["ESCAPE_AUTH_SN"]=null;
+				}
+			}else if(top["ESCAPE_AUTH_DATA"]){
+				var data = $.DataMap(top["ESCAPE_AUTH_DATA"]);
+				var serNum = data.get("SERIAL_NUMBER");
+				if(serNum == sn){
+					return true;
+				}else{
+					top["ESCAPE_AUTH_DATA"] = null;
+				}
+			}
+			//return $.auth.cacheData["AUTH_VALID_SN"]==sn;
+			return false;
+		},
+		
+		//校验手机号码是否正确
+		authSnValid:function(){
+			var snObj=$("#AUTH_SERIAL_NUMBER");
+			snObj.val($.trim(snObj.val()));
+			//如果认证类型不是个人服务号码，则取消手机号码格式校验
+			if($("#AUTH_SUBMIT_BTN").attr("authType")!= "00"){
+				snObj.removeAttr("datatype");
+			}
+			if(!$.validate.verifyField(snObj[0])){
+				return false;
+			}
+			return true;
+		},
+		//刷新页面
+		reflushPage:function(){
+			var href = window.location.href;
+			if(href){
+				if(href.lastIndexOf("#nogo") == href.length-5){
+					href = href.substring(0, href.length-5);
+				}
+				var url = href.substring(0, href.indexOf("?"));
+				var reqParam = href.substr(href.indexOf("?")+1);
+				
+				var paramObj = $.params.load(reqParam);
+				paramObj.remove("DISABLED_AUTH");
+				paramObj.remove("SERIAL_NUMBER");
+				paramObj.remove("AUTO_AUTH");
+				var param = paramObj.toString();
+				if(param.indexOf("SERIAL_NUMBER") == -1 && $("#AUTH_SERIAL_NUMBER").length){
+					param += "&SERIAL_NUMBER="+$("#AUTH_SERIAL_NUMBER").val();
+				}
+				param += "&AUTO_AUTH=false";		//重新刷新以后，禁用之前逻辑中的自动刷新
+
+				window.location.href = url+"?"+param;
+			}
+		},
+		//外部调用接口，启动AUTH认证
+		autoAuth:function(){
+			var autoAuthSn = $("#AUTH_SERIAL_NUMBER").val();
+			//如果没有输入号码，则取消自动认证
+			if(autoAuthSn == "") return;
+
+			$.auth.authStart();
+		},
+		//设置免除认证号码
+		escapeAuth:function(serialNumber){
+			top["ESCAPE_AUTH_SN"]= serialNumber;
+		},
+		cancelEscapeAuth:function(serialNumber){
+			top["ESCAPE_AUTH_SN"]= null;
+		},
+		//统一认证 DataMap
+		escapeAuthDataMap:function(custId,serNum,userId,memUserId,role,netTypeCode){
+			var data = $.DataMap();
+			data.put(custId, custId);
+			data.put("SERIAL_NUMBER", serNum);
+			data.put("USER_ID", userId);
+			data.put("MEB_USER_ID", memUserId);
+			data.put("ROLE", role);
+			data.put("NET_TYPE_CODE", netTypeCode);
+			top["ESCAPE_AUTH_DATA"]= data.toString();
+		},
+		
+		cancelEscapeAuthDataMap:function(){
+			top["ESCAPE_AUTH_DATA"] = null;
+		},
+		
+		//代理商 认证
+		setAgentTypeFlag:function(flag){
+			$("#AUTH_SUBMIT_BTN").attr("agentType", flag);
+		},
+		
+		//客户通话鉴权认证标记
+		setCustCallCheckTag:function(flag){
+			$("#AUTH_SUBMIT_BTN").attr("custCallCheck", flag);
+		},
+		
+		//启动认证
+		authStart:function(){
+			if(!$.auth.authSnValid()){
+				return ;
+			}
+			//如果手机号码不同，则需要清理之前可能存在的费用数据
+			var sn = $("#AUTH_SERIAL_NUMBER").val();
+			if($.feeMgr && $.auth.cacheData["AUTH_VALID_SN"] != sn){
+				if(!$.feeMgr.clearFeeList())return;
+			}
+			//禁用输入框
+			$("#AUTH_SERIAL_NUMBER").attr("disabled", true);
+			var tradeTypeCode = $("#TRADE_TYPE_CODE").val();
+			//记录认证的号码
+			top["AUTH_PARSE_SN"] = sn;
+			
+			//第二次查询的时候清除以前查询展示的数据
+			var clearPartAction=$("#AUTH_SUBMIT_BTN").attr("clearPartAction"); 
+			if(clearPartAction && clearPartAction != ""){
+				(new Function(clearPartAction + ";"))();
+			}
+			
+			//代理商
+			var inModeCode = $("#AUTH_SUBMIT_BTN").attr("inModeCode");
+			if(inModeCode && inModeCode == "3"){
+				$("#AUTH_SUBMIT_BTN").attr("disabledAuth", "false");
+			}
+			
+			if ($("#AUTH_SUBMIT_BTN").attr("moreUser") == "true"){
+				$.auth.checkMoreUser();
+			}else{
+				if($.auth.cancelAuth(sn)){
+					$.auth.loadTradeData();
+					return false;
+				}
+				$.auth.beforeAuthCheck();
+			}
+			
+			try{
+				setTimeout(function(){
+					if(top.triggerPushInfos && typeof(top.triggerPushInfos)=="function"){
+						if(tradeTypeCode == "3700"){
+							var params='CUST_CODE='+sn+'&CHNL_TYPE=T000';
+							top.triggerPushInfos(params,'baseinfo')
+						}
+					}
+				},100);	
+			}catch(e){
+				//测试,暂时先try-catch住
+			}
+		},
+		
+		//核对多用户
+		checkMoreUser:function(){
+			//ACTION 入参在组件内部区分调用逻辑
+			var param = "&ACTION=AUTH_MOREUSER";
+			param += "&SERIAL_NUMBER="+$("#AUTH_SERIAL_NUMBER").val();
+			
+			$.beginPageLoading("查询用户...");
+			//通过刷新组件，在组件内部判断多用户
+			ajaxSubmit(null, null, param, $.auth.part, 
+				function(data){ 
+			  		$.endPageLoading();	
+			  		if(data && data.get("RESULT_CODE")==0){
+			  			//多用户选择
+			  			$("#AUTH_SERIAL_NUMBER").attr("disabled", false);
+			  			$.popupPage("components.auth.UserList", "queryUserList", 
+			  							"&cond_SERIAL_NUMBER=" +$("#AUTH_SERIAL_NUMBER").val()+"&cond_TRADE_TYPE_CODE="+$("#TRADE_TYPE_CODE").val()+"&cond_USER_LIST_SVC="+$.auth.userListSvc+"&cond_MOREUSER_TAG="+$("#AUTH_SUBMIT_BTN").attr("moreUserTag")+"&cond_TAG_VALIDORNO="+$("#AUTH_SUBMIT_BTN").attr("tagValidOrNo"), "用户选择", "640", "250", "SELECTED_AUTH_USER");
+			  			
+			  		}else{
+			  			MessageBox.alert("告警提示","不存在该号码的用户，请重新输入！",$.auth.reflushPage);
+			  		}
+				},function(code, info, detail){
+					$.endPageLoading();
+					MessageBox.alert("错误提示","查询用户报错！",$.auth.reflushPage, null, info, detail);
+			});
+		},
+		
+		//选择多用户后点击事件
+		afterSelectMoreUser:function(){
+			$("#AUTH_SERIAL_NUMBER").attr("disabled", true);
+			var selectedUserId = $("#SELECTED_AUTH_USER").val();
+			if (selectedUserId != ""){
+				$.auth.beforeAuthCheck(selectedUserId);
+			}else{
+				$.auth.beforeAuthCheck();
+			}
+		},
+		
+		//认证校验之前动作,确认用户是否存在
+		beforeAuthCheck:function(userId){
+			var param = "&ACTION=AUTH_BEFORE";
+			var authSn = $("#AUTH_SERIAL_NUMBER").val();
+			
+			param += "&SERIAL_NUMBER="+authSn;
+			param += "&TRADE_TYPE_CODE="+$("#TRADE_TYPE_CODE").val();
+			param += "&NET_TYPE_CODE=00";
+			param += "&USER_CAN_BE_NULL="+$("#AUTH_SUBMIT_BTN").attr("userCanBeNull");
+			param += "&DISABLED_AUTH="+$("#AUTH_SUBMIT_BTN").attr("disabledAuth");
+			param += "&AUTH_TYPE="+$("#AUTH_SUBMIT_BTN").attr("authType");
+			param += "&AGENT_TYPE="+$("#AUTH_SUBMIT_BTN").attr("agentType");
+			if (userId){
+				param += "&USER_ID=" + userId;
+			}
+
+			$.beginPageLoading("查询用户。。。");
+			//通过刷新组件，在组件内部做校验前准备
+			ajaxSubmit(null, null, param, $.auth.part, $.auth.callBackBeforeAuthCheck,
+				function(code, info, detail){
+					$.endPageLoading();
+					MessageBox.alert("错误提示","查询用户报错！",$.auth.reflushPage, null, info, detail);
+				},function(){
+					$.endPageLoading();
+					MessageBox.alert("告警提示", "查询用户超时");
+			});	
+
+		},
+		//查询业务类型数据及其他认证需要的数据，判断是否弹出校验认证框
+		callBackBeforeAuthCheck:function(data){ 
+			$.endPageLoading();	
+			if($.auth.cacheData["AUTH_CURRENT_SN"] 
+				&& $.auth.cacheData["AUTH_CURRENT_SN"]!=$("#AUTH_SERIAL_NUMBER").val()){
+				$("#AUTH_SUBMIT_BTN").attr("authCount", "0");		//如果鉴权号码跟输入号码不同，则重置认证错误次数
+			}
+			var userInfo = data.get("USER_INFO");
+			if(userInfo){
+				$.auth.cacheData["AUTH_USER_ID"] = userInfo.get("USER_ID");	//记录好认证USER_ID
+				$.auth.cacheData["AUTH_CURRENT_SN"] = userInfo.get("SERIAL_NUMBER");
+			}
+			//如果不需要认证，直接去加载三户信息
+			if(data.get("AUTH_STATE") == "1"){
+				$.auth.loadTradeData();
+				return;
+			}
+			//记录认证方式
+			var checkTag = data.get("AUTH_IDENTITY_CHECK_TAG");
+			$("#AUTH_SUBMIT_BTN").attr("checkTag", checkTag);
+			$("#AUTH_SUBMIT_BTN").attr("noUserPasswd", "false");
+			if (userInfo && userInfo.get("USER_PASSWD")==""){
+				//设置用户密码为空
+				$("#AUTH_SUBMIT_BTN").attr("noUserPasswd", "true");
+				MessageBox.alert("告警提示","该用户尚未设置密码,请使用客户证件方式进行身份校验！", function(){
+					//如果用户密码为空，且只有密码认证唯一方式，则允许用户不需要校验
+					if (checkTag=="01000"){
+						$.auth.loadTradeData();
+						return;
+					}
+					$.auth.popAuthCheck();
+				});
+			}else{
+				$.auth.popAuthCheck();
+			}
+		},
+		//弹出认证窗口
+		popAuthCheck:function(){
+			var param = "&HANDLER="+$.auth.popupHandler;
+			param += "&SERIAL_NUMBER="+$("#AUTH_SERIAL_NUMBER").val();
+			param += "&TRADE_TYPE_CODE="+$("#TRADE_TYPE_CODE").val();
+			param += "&IDENTITY_CHECK_TAG="+$("#AUTH_SUBMIT_BTN").attr("checkTag");
+			param += "&DISABLED_AUTH="+$("#AUTH_SUBMIT_BTN").attr("disabledAuth");
+			param += "&NO_USER_PASSWD="+$("#AUTH_SUBMIT_BTN").attr("noUserPasswd");
+			param += "&AGENT_TYPE="+$("#AUTH_SUBMIT_BTN").attr("agentType");
+			param += "&CUST_CALL_CHECK="+$("#AUTH_SUBMIT_BTN").attr("custCallCheck");
+			param += "&AUTH_TYPE="+$("#AUTH_SUBMIT_BTN").attr("authType");
+			
+			//弹出密码认证窗口
+			$.popupPage("components.auth.AuthCheck", "init", param, "身份校验", "500", "135", $.auth.popupHandler);	
+			//解除输入框禁用，否则点击取消时候，没法输入
+			$("#AUTH_SERIAL_NUMBER").attr("disabled", false);	
+		},
+		
+		onAuthCheck:function(){
+			//继续禁用
+			$("#AUTH_SERIAL_NUMBER").attr("disabled", true);
+			var param = "";	
+			//鉴权认证公共入参
+			param += "&ACTION=AUTH_CHECK";
+			param += "&SERIAL_NUMBER="+$("#AUTH_SERIAL_NUMBER").val();
+			param += "&TRADE_TYPE_CODE="+$("#TRADE_TYPE_CODE").val();
+			param += "&NO_USER_PASSWD="+$("#AUTH_SUBMIT_BTN").attr("noUserPasswd");
+			param += "&DISABLED_AUTH="+$("#AUTH_SUBMIT_BTN").attr("disabledAuth");
+			param += "&AUTH_TYPE="+$("#AUTH_SUBMIT_BTN").attr("authType");
+			if ($.auth.cacheData["AUTH_USER_ID"]){
+				param += "&USER_ID="+$.auth.cacheData["AUTH_USER_ID"];		//用户USER_ID
+			}
+
+			/**
+			 * 鉴权认证密码框返回入参
+			 * [CHECK_MODE,PSPT_TYPE_CODE,USER_PASSWD,PSPT_ID,SIM_NO,VIP_ID,OWNER_PSPT_ID,IVR_PASS_SUCC,DISABLED_AUTH,SERIAL_NUMBER1,SERIAL_NUMBER2,SERIAL_NUMBER3,CUST_NAME]
+			 */
+			var checkData = $("#"+$.auth.popupHandler).val();
+			param += checkData;
+			
+			//更改不需要认证标识
+			var authParams = $.params.load(checkData);
+			
+			if(authParams.get("BOSS_ID"))
+			{
+				$("#AUTH_SUBMIT_BTN").attr("bossId", authParams.get("BOSS_ID"));
+			}
+			
+			if(authParams.get("DISABLED_AUTH")){
+				$("#AUTH_SUBMIT_BTN").attr("disabledAuth", authParams.get("DISABLED_AUTH"));
+			}
+			var checkMode = authParams.get("CHECK_MODE");
+			if(checkMode && (checkMode=="1" || checkMode=="2" || checkMode=="4")){
+				$("#AUTH_SUBMIT_BTN").attr("userPasswd", authParams.get("PASSWORD"));
+			}
+			
+			$.beginPageLoading("认证校验。。。");
+			ajaxSubmit(null, null, param, $.auth.componentId, $.auth.afterAuthCheck,	
+				function(code, info, detail){
+					$.endPageLoading();
+					MessageBox.alert("错误提示","认证校验报错！",$.auth.reflushPage, null, info, detail);
+				},function(){
+					$.endPageLoading();
+					MessageBox.alert("告警提示","认证校验超时！");
+			});
+		},
+		afterAuthCheck:function(data){
+			$.endPageLoading();
+			var authCount = parseInt($("#AUTH_SUBMIT_BTN").attr("authCount"));
+			authCount++;
+			if (data.get("RESULT_CODE") !="0"){
+				$("#AUTH_SUBMIT_BTN").attr("authCount", authCount);
+				if(authCount<3){
+					MessageBox.alert("告警提示", "第"+authCount+"次身份校验："+data.get("RESULT_INFO"), function(){
+						if (data.get("IS_CLOSE") != "1"){
+							$.auth.popAuthCheck();
+						}else{
+							//如果校验错误锁定以后，刷新页面
+							$.auth.reflushPage();
+						}	
+					});
+				}else{
+					MessageBox.alert("告警提示", "三次身份校验失败!");
+					$.auth.reflushPage();
+				}	
+				return;
+			}
+			//如果校验成功，则清空认证次数
+			$("#AUTH_SUBMIT_BTN").attr("authCount", "0");		
+			if(!$.auth.cacheData["AUTH_DATA"]) $.auth.cacheData["AUTH_DATA"]=$.DataMap();
+			//如果通过认证，则记录认证校验数据
+			if(data.containsKey("CHECK_MODE")){
+				$.auth.cacheData["AUTH_DATA"].put("CHECK_MODE", data.get("CHECK_MODE"));
+				$.auth.cacheData["AUTH_DATA"].put("CHECK_DESC", data.get("CHECK_MODE_DESC"));
+			}
+			$.auth.loadTradeData();				
+		},
+		//加载三户资料
+		loadTradeData:function(){
+			var param = "&ACTION=AUTH_DATA";
+			param += "&SERIAL_NUMBER="+$("#AUTH_SERIAL_NUMBER").val();
+			param += "&TRADE_TYPE_CODE="+$("#TRADE_TYPE_CODE").val();
+			param += "&USER_CAN_BE_NULL="+$("#AUTH_SUBMIT_BTN").attr("userCanBeNull");
+			param += "&AUTH_TYPE="+$("#AUTH_SUBMIT_BTN").attr("authType");
+			param += "&MEB_USER_ID="+$("#AUTH_SUBMIT_BTN").attr("mebUserId");
+			param += "&ROLE="+$("#AUTH_SUBMIT_BTN").attr("role");
+			
+			if ($.auth.cacheData["AUTH_USER_ID"]){
+				param += "&USER_ID=" + $.auth.cacheData["AUTH_USER_ID"];
+			}
+			
+			$.beginPageLoading("加载数据。。。");
+			ajaxSubmit(null, null, param, $.auth.componentId, 
+				function(ucaData){
+					$.endPageLoading();
+					//保存好用户信息
+					if(!$.auth.cacheData["AUTH_DATA"]) $.auth.cacheData["AUTH_DATA"]=$.DataMap();
+					ucaData.eachKey(function(key,index,totalcount){
+						$.auth.cacheData["AUTH_DATA"].put(key, ucaData.get(key));
+					});
+					
+					//记录认证的号码
+					$.auth.cacheData["AUTH_VALID_SN"] = $("#AUTH_SERIAL_NUMBER").val();
+					
+					//增加简单密码校验提示，因为不需要发送短信提醒，后台简单密码校验屏蔽
+					if($.auth.cacheData["AUTH_DATA"].containsKey("CHECK_MODE")){
+						var checkMode = $.auth.cacheData["AUTH_DATA"].get("CHECK_MODE");
+						var userPasswd = $("#AUTH_SUBMIT_BTN").attr("userPasswd");
+						if(checkMode=="1" || checkMode=="2" || checkMode=="4"){
+							if($.auth.isSimplePasswd( 
+									$("#AUTH_SUBMIT_BTN").attr("userPasswd"), 
+										$("#AUTH_SERIAL_NUMBER").val(), 
+											ucaData.get("CUST_INFO").get("PSPT_ID"))){
+								MessageBox.alert("告警提示", "设置的服务密码较为简单，为保护客户个人信息安全，请建议客户修改！", 
+								function(){
+									$.auth.ruleAction(ucaData);
+								});
+								return;
+							}
+						}
+					}
+					//规则校验
+					$.auth.ruleAction(ucaData);					
+				},
+				function(code, info, detail){
+					$.endPageLoading();
+					MessageBox.alert("错误提示","加载数据报错！",$.auth.reflushPage, null, info, detail);
+				},function(){
+					$.endPageLoading();
+					MessageBox.alert("告警提示","加载数据超时！");
+			});
+			
+		},
+		//启动业务规则校验
+		ruleAction:function(obj){
+			if(typeof(obj) == "undefined"){
+				obj = $.auth.cacheData["AUTH_DATA"];
+			}
+			
+			//判断是否有业务规则校验前自定义规则事件处理		
+			var beforeAction=$("#AUTH_SUBMIT_BTN").attr("beforeAction"); 
+			if(beforeAction && beforeAction != ""){
+				(new Function("var data = arguments[0];"+ beforeAction + ";"))(obj);
+			}
+			
+			//异步单独处理 小篮筐
+			if(top.showCustInfo && typeof(top.showCustInfo)=="function"){
+				var param = "&SERIAL_NUMBER="+$("#AUTH_SERIAL_NUMBER").val();
+				param += "&TRADE_TYPE_CODE="+$("#TRADE_TYPE_CODE").val();
+				if(obj && obj.get("USER_INFO")){
+					param +="&USER_ID="+obj.get("USER_INFO").get("USER_ID");
+					param +="&PRODUCT_ID="+obj.get("USER_INFO").get("PRODUCT_ID");
+					param +="&BRAND_CODE="+obj.get("USER_INFO").get("BRAND_CODE");	
+					param +="&EPARCHY_CODE="+obj.get("USER_INFO").get("EPARCHY_CODE");
+					param +="&CUST_ID="+obj.get("USER_INFO").get("CUST_ID");
+					param +="&RSRV_STR9="+obj.get("USER_INFO").get("RSRV_STR9");//中文的话需要转码,测试修改
+					//encodeURI(encodeURI(selName))
+					//URLDecoder.decode(condition.getString("TASKWARNING_MESSAGE"), "UTF-8")
+					param +="&OPEN_DATE="+obj.get("USER_INFO").get("OPEN_DATE");
+				}
+				$.ajax.submit("", "getHintInfo", param,"",function(data){
+						if(!data || (data && data.get("RESULT_CODE")!="0")){
+							top.clearCustInfo();
+						}else{
+							var map=$.DataMap();
+							var custName = obj.get("CUST_INFO").get("CUST_NAME");
+							map.put("CUST_NAME", custName);
+							map.put("PRODUCT_NAME", obj.get("USER_INFO").get("PRODUCT_NAME"));
+							map.put("HINT_INFO", data.get("HINT_INFO", ""));
+							top.showCustInfo(map.toString());
+						}
+					},function(code, info, detail){
+						$.endPageLoading();
+						MessageBox.alert("错误提示","加载客户信息错误！", null, null, info, detail);
+				});
+			}
+			
+			//调用业务规则校验
+			if($.tradeCheck && typeof($.tradeCheck.checkTrade)){
+				$.tradeCheck.checkTrade(0 , $.auth.fireAction);
+			}else{
+				$.auth.fireAction(obj);
+			}
+		},
+		
+		//加载业务受理准备数据
+		fireAction:function(obj){
+			if(typeof(obj) == "undefined"){
+				obj = $.auth.cacheData["AUTH_DATA"];
+			}
+
+			var disabledInput = $("#AUTH_SUBMIT_BTN").attr("disabledInput");
+			//更新认证和提交组件相关数据和控件的状态
+			var inModeCode = $("#AUTH_SUBMIT_BTN").attr("inModeCode");
+			//if(inModeCode != "1" && (disabledInput && disabledInput=="false")){
+			if(disabledInput && disabledInput=="false"){
+				$("#AUTH_SERIAL_NUMBER").attr("disabled", false);
+			}
+
+			//刷新三户展示区域
+			if($("#UCAViewPart") && $("#UCAViewPart").length){
+				$.ajax.submit(null, "setUCAViewInfos", "&UCAInfoParam="+ encodeURIComponent(obj)+"&TRADE_TYPE_CODE="+$("#TRADE_TYPE_CODE").val(), "UCAViewPart");
+			}
+			
+			//回调业务数据加载服务
+			var action=$("#AUTH_SUBMIT_BTN").attr("tradeAction"); 
+			if(action && action != ""){
+				try{
+					(new Function("var data = arguments[0];"+ action + ";"))(obj);
+				}catch(e){
+					MessageBox.alert("错误提示","加载业务受理信息错误，请检查后重试！",$.auth.reflushPage);
+					return;
+				}
+			}
+			
+			//加载费用
+			if($.feeMgr){
+				var userId="",productId="-1",sn=$("#AUTH_SERIAL_NUMBER").val(),eparchyCode=null,vipClassId=null;
+				if(obj && obj.get("USER_INFO")){
+					userId = obj.get("USER_INFO").get("USER_ID");
+					sn = obj.get("USER_INFO").get("SERIAL_NUMBER");
+					productId = obj.get("USER_INFO").get("PRODUCT_ID");				
+					eparchyCode = obj.get("USER_INFO").get("EPARCHY_CODE");				
+				}
+				if(obj && obj.get("VIP_INFO")){
+					vipClassId = obj.get("VIP_INFO").get("VIP_CLASS_ID");				
+				}
+				
+				setTimeout(function(){//为了防止费用配置没加载完就去校验
+					$.feeMgr.loadTradeFee($("#TRADE_TYPE_CODE").val(),productId,eparchyCode, vipClassId);
+				},100);
+				
+				//设置POS机信息
+				$.feeMgr.setPosParam($("#TRADE_TYPE_CODE").val(), sn, eparchyCode, userId);
+			}
+			
+			//营销推荐信息(触发式营销)
+			try{
+				setTimeout(function(){
+					if(top.triggerPushInfos && typeof(top.triggerPushInfos)=="function"){
+						if(obj && obj.get("USER_INFO")){
+							top.triggerPushInfos("TOUCH_TYPE=2&CHNL_TYPE=T000&USER_ID="+obj.get("USER_INFO").get("USER_ID")+"&CUST_CODE="+$("#AUTH_SERIAL_NUMBER").val(),"baseinfo");
+						}else{
+							top.triggerPushInfos("TOUCH_TYPE=2&CHNL_TYPE=T000&CUST_CODE="+$("#AUTH_SERIAL_NUMBER").val(),"baseinfo");	
+						}
+					}
+				},100);
+			}catch(e){
+				//测试,暂时先try-catch住
+			}
+			
+//			try{
+//				if(top.triggerPushInfos && typeof(top.triggerPushInfos)=="function") {
+//					var hintInfo = $.DataMap(obj.get("USER_INFO").toString());
+//					hintInfo.put("TRADE_TYPE_CODE", $("#TRADE_TYPE_CODE").val());
+//					var param="&HINT_INFO="+hintInfo.toString();
+//					$.ajax.submit("", "checkPushInfo", param,"",function(resultData){
+//							if(!resultData || (resultData && resultData.get("PUSH_FLAG")!="1")){
+//								top.$.sidebar.hideSide(true);
+//								return;
+//							}
+//							top.triggerPushInfos(param.substr(1),"baseinfo");
+//						},function(code, info, detail){
+//							$.endPageLoading();
+//							MessageBox.alert("错误提示","加载新业务推荐信息错误！", null, null, info, detail);
+//					});
+//				}
+//			}catch(e){
+//				//测试,暂时先try-catch住
+//			}
+			
+			//发展员工初始化
+			if($.developStaff && typeof($.developStaff.init)){
+				$.developStaff.init();
+			}
+			//启用提交按钮
+			if($.cssubmit){
+				$.cssubmit.disabledSubmitBtn(false);
+			}
+			//清空认证框设置的参数值
+			$("#"+$.auth.popupHandler).val("");
+			//设置业务受理地州
+			if(obj && obj.get("USER_INFO")){
+				$("#TRADE_EPARCHY_NAME").text(obj.get("USER_INFO").get("EPARCHY_NAME"));
+			}
+		},
+		//获取三户信息等
+		getAuthData: function(){
+			return $.auth.cacheData["AUTH_DATA"];
+		},
+		//禁用号码输入框 
+		disabledAuthInput:function(flag){
+			$("#AUTH_SERIAL_NUMBER").attr("disabled", flag);
+		},
+		//设置查询多用户列表服务
+		setUserListSvc:function(svcName){
+			this.userListSvc = svcName;
+		},
+		//简单密码校验
+		isSimplePasswd:function(userPasswd, serialNumber, psptId){
+			if($.toollib.isSerialCode(userPasswd)){
+				return true;
+			}
+			if($.toollib.isRepeatCode(userPasswd)){
+				return true;
+			}
+			if(psptId.indexOf(userPasswd)>-1 || serialNumber.indexOf(userPasswd)>-1){
+				return true;
+			}
+			if($.toollib.isSubRingCode(serialNumber, userPasswd, 3)){
+				return true;
+			}
+			if($.toollib.getRepeatCount(userPasswd)<=3){
+				return true;
+			}
+			if($.toollib.isHalfSame(userPasswd)){
+				return true;
+			}
+			if($.toollib.isAllParity(userPasswd)){
+				return true;
+			}
+			return false;
+		},
+		events:{
+			//号码框事件
+			onSerialNumberInputKeyDown:function(e){
+				if(e.keyCode==13 || e.keyCode==108){
+					//回车事件
+					$.auth.authStart();
+					return false;
+				}
+				return true;
+			},
+			//点击查询按钮事件
+			onBtnSubmitClick:function(){
+				//查询按钮事件
+				$.auth.authStart();
+			},
+			//粘贴服务号码
+			onPasteSnClick:function(){
+				if(!top["AUTH_PARSE_SN"]){
+					MessageBox.alert("告警提示","没有可粘贴的服务号码！");
+					return;
+				}
+				$("#AUTH_SERIAL_NUMBER").val(top["AUTH_PARSE_SN"]);
+			}
+		},
+		setPart : function() {
+			var part = $.auth.componentId;
+			var clearPart = $("#AUTH_SUBMIT_BTN").attr("clearPart");
+			if(clearPart){
+				part += ","+clearPart;
+			}
+			this.part = part;
+			
+//			var part = "";
+//			var arrPart = $("div[_comp_path]");
+//			var flag = false;
+//			for ( var i = 0; i < arrPart.length; i++) {
+//				if(arrPart[i].id=="AuthPart"){
+//					flag = true;
+//				}
+//				if(flag){
+//					part += arrPart[i].id + ",";	
+//				}
+//			}
+//			if (part.length > 1)
+//				part = part.substring(0, part.length - 1);
+//			this.part = part;
+		}
+	}});
+	
+	//页面初始化
+	$($.auth.init);
+})(Wade);

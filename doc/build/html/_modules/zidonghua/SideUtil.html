@@ -1,0 +1,216 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml" lang="zh_cn">
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>zidonghua.SideUtil &#8212; Code Pro 1.0 文档</title>
+    <link rel="stylesheet" href="../../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../" src="../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <script type="text/javascript" src="../../_static/language_data.js"></script>
+    <script type="text/javascript" src="../../_static/translations.js"></script>
+    <link rel="index" title="索引" href="../../genindex.html" />
+    <link rel="search" title="搜索" href="../../search.html" />
+   
+  <link rel="stylesheet" href="../../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>zidonghua.SideUtil 源代码</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">json</span><span class="o">,</span> <span class="nn">profile</span><span class="o">,</span> <span class="nn">unittest</span><span class="o">,</span><span class="nn">re</span>
+<span class="kn">import</span> <span class="nn">profile</span> <span class="c1">#测试性能，只能在控制台运行</span>
+
+<span class="c1">#信息找不到</span>
+<div class="viewcode-block" id="InfoNotFoundException"><a class="viewcode-back" href="../../zidonghua.html#zidonghua.SideUtil.InfoNotFoundException">[文档]</a><span class="k">class</span> <span class="nc">InfoNotFoundException</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+<span class="c1">#不是一个list</span>
+<div class="viewcode-block" id="NotListException"><a class="viewcode-back" href="../../zidonghua.html#zidonghua.SideUtil.NotListException">[文档]</a><span class="k">class</span> <span class="nc">NotListException</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+<span class="n">IGNORED_CMD</span><span class="o">=</span><span class="p">(</span><span class="s1">&#39;setWindowSize&#39;</span><span class="p">,)</span>
+
+<span class="c1"># __import__(module_name)  side解析器</span>
+<div class="viewcode-block" id="SideParser"><a class="viewcode-back" href="../../zidonghua.html#zidonghua.SideUtil.SideParser">[文档]</a><span class="k">class</span> <span class="nc">SideParser</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="c1">#初始化方法</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">handler</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span><span class="s1">&#39;r&#39;</span><span class="p">,</span><span class="n">encoding</span><span class="o">=</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">side_info</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">handler</span><span class="p">)</span>
+
+<div class="viewcode-block" id="SideParser.get_side_info"><a class="viewcode-back" href="../../zidonghua.html#zidonghua.SideUtil.SideParser.get_side_info">[文档]</a>    <span class="k">def</span> <span class="nf">get_side_info</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">side_info</span><span class="p">;</span></div>
+
+<div class="viewcode-block" id="SideParser.get_ip"><a class="viewcode-back" href="../../zidonghua.html#zidonghua.SideUtil.SideParser.get_ip">[文档]</a>    <span class="k">def</span> <span class="nf">get_ip</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span><span class="n">url</span><span class="p">):</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;\b(?:[0-9]{1,3}\.)</span><span class="si">{3}</span><span class="s2">[0-9]{1,3}\b&quot;</span><span class="p">,</span> <span class="n">url</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">)</span><span class="o">&gt;</span><span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">result</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">raise</span> <span class="n">InfoNotFoundException</span><span class="p">(</span><span class="n">url</span><span class="o">+</span><span class="s1">&#39; not has ip&#39;</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="SideParser.is_vaild"><a class="viewcode-back" href="../../zidonghua.html#zidonghua.SideUtil.SideParser.is_vaild">[文档]</a>    <span class="k">def</span> <span class="nf">is_vaild</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span><span class="n">ip</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.)</span><span class="si">{3}</span><span class="s2">(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$&quot;</span><span class="p">,</span><span class="n">ip</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+
+<div class="viewcode-block" id="SideParser.get_tests"><a class="viewcode-back" href="../../zidonghua.html#zidonghua.SideUtil.SideParser.get_tests">[文档]</a>    <span class="k">def</span> <span class="nf">get_tests</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">isDict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">side_info</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">side_info</span><span class="p">[</span><span class="s1">&#39;tests&#39;</span><span class="p">]</span>
+        <span class="k">raise</span>  <span class="n">InfoNotFoundException</span><span class="p">(</span><span class="s1">&#39;tests not found&#39;</span><span class="p">)</span></div>
+
+    <span class="c1">#根据名称获得测试组件</span>
+<div class="viewcode-block" id="SideParser.get_test"><a class="viewcode-back" href="../../zidonghua.html#zidonghua.SideUtil.SideParser.get_test">[文档]</a>    <span class="k">def</span> <span class="nf">get_test</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span><span class="n">test</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">isDict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">side_info</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">test</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">side_info</span><span class="p">[</span><span class="s1">&#39;tests&#39;</span><span class="p">]:</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">isDict</span><span class="p">(</span><span class="n">test</span><span class="p">)</span> <span class="ow">and</span> <span class="n">test</span><span class="p">[</span><span class="s1">&#39;name&#39;</span><span class="p">]</span><span class="o">==</span><span class="n">test</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="n">test</span>
+        <span class="k">raise</span>  <span class="n">InfoNotFoundException</span><span class="p">(</span><span class="s1">&#39;tests not found&#39;</span><span class="p">)</span></div>
+
+    <span class="c1">#返回list 运行条件</span>
+<div class="viewcode-block" id="SideParser.get_suites"><a class="viewcode-back" href="../../zidonghua.html#zidonghua.SideUtil.SideParser.get_suites">[文档]</a>    <span class="k">def</span> <span class="nf">get_suites</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">isDict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">side_info</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">side_info</span><span class="p">[</span><span class="s1">&#39;suites&#39;</span><span class="p">]</span>
+        <span class="k">raise</span>  <span class="n">InfoNotFoundException</span><span class="p">(</span><span class="s1">&#39;suites not found&#39;</span><span class="p">)</span></div>
+
+    <span class="c1">#获得端口</span>
+<div class="viewcode-block" id="SideParser.get_port"><a class="viewcode-back" href="../../zidonghua.html#zidonghua.SideUtil.SideParser.get_port">[文档]</a>    <span class="k">def</span> <span class="nf">get_port</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span><span class="n">url</span><span class="p">):</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;\b(?:[0-9]{1,3}\.)</span><span class="si">{3}</span><span class="s2">[0-9]{1,3}:[0-9]{1,6}\b&quot;</span><span class="p">,</span> <span class="n">url</span><span class="p">)</span>
+        <span class="nb">list</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;:&#39;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span><span class="o">==</span><span class="mi">2</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">list</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">raise</span> <span class="n">InfoNotFoundException</span><span class="p">(</span><span class="n">url</span> <span class="o">+</span> <span class="s1">&#39; not has ip&#39;</span><span class="p">)</span></div>
+
+    <span class="c1"># 获得基本网址</span>
+<div class="viewcode-block" id="SideParser.get_base_url"><a class="viewcode-back" href="../../zidonghua.html#zidonghua.SideUtil.SideParser.get_base_url">[文档]</a>    <span class="k">def</span> <span class="nf">get_base_url</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">isDict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">side_info</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">side_info</span><span class="p">[</span><span class="s1">&#39;url&#39;</span><span class="p">]</span>
+        <span class="k">raise</span>  <span class="n">InfoNotFoundException</span><span class="p">(</span><span class="s1">&#39;base url not found&#39;</span><span class="p">)</span></div>
+
+    <span class="c1"># 获得批量网址</span>
+<div class="viewcode-block" id="SideParser.get_batch_urls"><a class="viewcode-back" href="../../zidonghua.html#zidonghua.SideUtil.SideParser.get_batch_urls">[文档]</a>    <span class="k">def</span> <span class="nf">get_batch_urls</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">isDict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">side_info</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">side_info</span><span class="p">[</span><span class="s1">&#39;urls&#39;</span><span class="p">]</span>
+        <span class="k">raise</span>  <span class="n">InfoNotFoundException</span><span class="p">(</span><span class="s1">&#39;batch urls not found&#39;</span><span class="p">)</span></div>
+
+    <span class="c1"># 获得批量插件</span>
+<div class="viewcode-block" id="SideParser.get_plugins"><a class="viewcode-back" href="../../zidonghua.html#zidonghua.SideUtil.SideParser.get_plugins">[文档]</a>    <span class="k">def</span> <span class="nf">get_plugins</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">isDict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">side_info</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">side_info</span><span class="p">[</span><span class="s1">&#39;plugins&#39;</span><span class="p">]</span>
+        <span class="k">raise</span>  <span class="n">InfoNotFoundException</span><span class="p">(</span><span class="s1">&#39;plugins not found&#39;</span><span class="p">)</span></div>
+
+    <span class="c1"># 获得selenium版本信息</span>
+<div class="viewcode-block" id="SideParser.get_side_version"><a class="viewcode-back" href="../../zidonghua.html#zidonghua.SideUtil.SideParser.get_side_version">[文档]</a>    <span class="k">def</span> <span class="nf">get_side_version</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">isDict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">side_info</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">side_info</span><span class="p">[</span><span class="s1">&#39;version&#39;</span><span class="p">]</span>
+        <span class="k">raise</span>  <span class="n">InfoNotFoundException</span><span class="p">(</span><span class="s1">&#39;version not found&#39;</span><span class="p">)</span></div>
+
+    <span class="c1"># 判断是否是字典</span>
+<div class="viewcode-block" id="SideParser.isDict"><a class="viewcode-back" href="../../zidonghua.html#zidonghua.SideUtil.SideParser.isDict">[文档]</a>    <span class="k">def</span> <span class="nf">isDict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span><span class="n">obj</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span><span class="nb">dict</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+
+<div class="viewcode-block" id="SideParser.isList"><a class="viewcode-back" href="../../zidonghua.html#zidonghua.SideUtil.SideParser.isList">[文档]</a>    <span class="k">def</span> <span class="nf">isList</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span><span class="n">obj</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span><span class="nb">list</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+
+<div class="viewcode-block" id="SideParser.isInt"><a class="viewcode-back" href="../../zidonghua.html#zidonghua.SideUtil.SideParser.isInt">[文档]</a>    <span class="k">def</span> <span class="nf">isInt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+
+    <span class="k">def</span> <span class="nf">__del__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">handler</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></div>
+
+
+
+<div class="viewcode-block" id="test"><a class="viewcode-back" href="../../zidonghua.html#zidonghua.SideUtil.test">[文档]</a><span class="k">def</span> <span class="nf">test</span><span class="p">():</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">SideParser</span><span class="p">(</span><span class="s1">&#39;autotest.side&#39;</span><span class="p">)</span>
+    <span class="n">url</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">get_base_url</span><span class="p">()</span></div>
+
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">test</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../autotest2.0.html">Code Pro</a></h1>
+
+
+
+
+
+
+
+
+<h3>导航</h3>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../autotest2.0.html">Documentation overview</a><ul>
+  <li><a href="../index.html">模块代码</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>快速搜索</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="转向" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2019, Dob.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.8.3</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

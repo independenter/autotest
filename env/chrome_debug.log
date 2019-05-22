@@ -1,0 +1,8 @@
+[5016:2700:0401/173400.655:INFO:CONSOLE(0)] "[DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o", source: http://10.131.156.155:9090/ngboss (0)
+[5016:2700:0401/173403.746:INFO:CONSOLE(0)] "[DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o", source: http://10.131.156.155:9090/touchframe/touchframe?service=page/touchframe.frame.pc.Main&listener=init&u=9d382b89c66dac7d57206e16f12289c3&v=190401151409 (0)
+[5016:2700:0401/173403.747:INFO:CONSOLE(0)] "[DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o", source: http://10.131.156.155:9090/touchframe/touchframe?service=page/touchframe.frame.pc.Main&listener=init&u=9d382b89c66dac7d57206e16f12289c3&v=190401151409 (0)
+[5016:2700:0401/173403.850:INFO:CONSOLE(18)] "Synchronous XMLHttpRequest on the main thread is deprecated because of its detrimental effects to the end user's experience. For more help, check https://xhr.spec.whatwg.org/.", source: http://10.131.156.155:9090/static/wade/v5/jcl/jcl-base.js?v=4.03 (18)
+[5016:1220:0401/175158.112:ERROR:ssl_client_socket_impl.cc(962)] handshake failed; returned -1, SSL error code 1, net_error -101
+[5016:1220:0401/175158.215:ERROR:ssl_client_socket_impl.cc(962)] handshake failed; returned -1, SSL error code 1, net_error -101
+[5016:2700:0401/175606.090:WARNING:pref_notifier_impl.cc(23)] Pref observer found at shutdown.
+[5016:2700:0401/175606.090:WARNING:pref_notifier_impl.cc(23)] Pref observer found at shutdown.

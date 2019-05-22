@@ -1,0 +1,1102 @@
+(function($){
+    var listVisible = false;
+    var listCount = 0;
+    var currentListIdx = -1;
+        //处理JSON数据
+    function parseErrorData(data){
+        if(data && $.isString(data)){
+            var code_idx = data.indexOf("\"x_resultcode\":\"");
+            var info_idx = data.indexOf("\"x_resultinfo\":\"");
+            if(code_idx >0 && info_idx >0){
+                data = data.substring(info_idx + 16);
+                data = data.substring(0,data.indexOf("\""));
+                data = "error:" + data;
+            }
+        }else if(data && $.isObject(data) && data.context){
+            data = "error:" + data.context.x_resultinfo
+        }
+        return data;
+    }    
+	$.wel = {
+		showFlag:false,
+	    SEARCH_TXT:null,
+        openMenu:function(){
+        },	
+		init : function(){
+			 // $("body").bind("click", function(event){
+				 // $.wel.hideLayer(event);
+			 // });
+			
+			$("#SEARCH_PRO").bind("keyup", function(){
+				$.wel.onClick();
+			});
+			
+            $("#SEARCH_PRO").bind("keydown", function(e){
+                $.wel.onKeyDown(e);
+            });		
+            
+            $("#SEARCH_PRO").bind("keyup", function(e){
+                $.wel.onKeyUp(e);
+            });             	
+			 $("#nav_search_ct").bind("click", function(e){
+				 $.wel.onListClick(e);
+			 });
+          $("#SEARCH_PRO").bind("focus", function(e){
+                $.wel.onFocus();
+            });	
+            $("#SEARCH_PRO").bind("blur", function(e){
+                //$.wel.onBlur();
+            })		 
+			 $("#document").bind("click", function(e){
+                
+                 $.wel.onDocClick(e);
+             });
+			
+			$("#NOW_DAY").bind("click", "1", $.wel.showDayOrMonthData);
+			$("#NOW_MONTH").bind("click", "2", $.wel.showDayOrMonthData);
+			
+			//绑个刷新页面事件
+			$("#STAFF_REFRESH").bind("click", function(){
+				$("#loadingPage").css("display", "");
+				$.wel.loadRecentRecommendData(null);
+			});
+		},
+        onFocus:function(e){
+            var txt=$("#SEARCH_PRO").val();
+            if(""!=txt && "搜索菜单"!=txt 
+                && $.wel.SEARCH_LIST
+                && $.wel.SEARCH_LIST.length>0){
+                $.wel.showList();
+            }
+
+            $(this).select();
+             $.wel.showList();
+            //return false;
+        },		
+        onDocClick:function(){
+            var ipt=$("#nav_search_ipt");
+            var txt=ipt.val();
+            if("" == $.trim(txt)){
+                listCount=0;
+                $.wel.SEARCH_TXT = null;
+                ipt.val("搜索菜单");
+            }
+            $.wel.hideList();
+        },		
+        showList:function(){
+            var do_scroll=$.wel.reHeight();
+            $("#nav_search_ct").css("display","");
+            $("#main_cover").css("display","");
+            
+            if(do_scroll){
+                $("#nav_search_scroll").attr("scrollTop",(currentListIdx+1)* 22 + 16 - 220);
+            }
+            listVisible=true;
+        },
+        hideList:function(){
+            if(listVisible){
+                $("#nav_search_ct").css("display","none");
+                $("#main_cover").css("display","none");
+                listVisible=false;
+            }
+        },
+        clearList:function(){
+            $("#nav_search_list").empty();
+        },
+        reHeight:function(){
+            var do_scroll=false;
+            var height=$("#nav_search_list").height();
+            var size = $("#nav_search_list a").length;
+            if(size>9){
+                if(currentListIdx>-1){
+                    do_scroll=true;
+                }else{
+                    $("#nav_search_scroll").css("height","220px");
+                }
+            }else{
+                $("#nav_search_scroll").css("height","auto");
+            }
+            return do_scroll;
+        },                		
+    onClick:function(){
+            var txt=$("#SEARCH_PRO").val();
+            if(""!=txt && "搜索菜单"!=txt){
+                $.wel.showList();
+            }
+            if("搜索菜单"==txt){
+                $(this).select();
+            }
+            return false;
+        },	
+        
+        onKeyDown:function(e){
+            //回车键
+            if(e.keyCode==13 || e.keyCode==108){
+                if(currentListIdx>-1){
+                    var el = $("#nav_search_list a:nth-child(" +(currentListIdx+1)+ ")");
+                    if(el.length){
+                        //打开菜单
+                        el.trigger("click");
+                    }
+                }
+                return false;
+            }
+        },    
+        onKeyUp:function(e){
+            //左右方向键
+            if(e.keyCode==37 || e.keyCode==39){
+                $(this).select();
+                return false;
+            }
+            //上下方向键
+            if(e.keyCode==38 || e.keyCode==40){
+                if(listVisible){
+
+                    //设置currentListIdx
+                    if(currentListIdx<0){
+                        currentListIdx=0;
+                    }else{
+                        if(e.keyCode==38){
+                            if(currentListIdx==0){
+                                return false;
+                            }else{ //向上
+                                currentListIdx--;
+                            }
+                        }else if(e.keyCode==40){
+                            if(currentListIdx==(listCount-1)){
+                                return false;
+                            }else{ //向下
+                                currentListIdx++;
+                            }
+                        } 
+                    }
+                            
+                    //alert("currentListIdx:" + currentListIdx);
+                    $("#nav_search_list a[class=on]").removeClass("on");
+                    $("#nav_search_list a:nth-child(" +(currentListIdx+1)+ ")").addClass("on");
+                    $("#nav_search_scroll").attr("scrollTop",(currentListIdx+1)* 22 + 16- 220);
+                }
+                return false;
+            }               
+            //字母数字和空格、退格
+            if(e.keyCode==32 || e.keyCode==8
+                || (e.keyCode>64 && e.keyCode<91)
+                || (e.keyCode>47 && e.keyCode<58)
+                || (e.keyCode>95 && e.keyCode<106)){
+            
+                var txt=$("#SEARCH_PRO").val();
+                txt=$.trim(txt);
+                //退格到输入框无内容时隐藏列表
+                if(e.keyCode==8 && txt==""){
+                    if(listVisible){
+                      $.wel.hideList();
+                    }
+                    return;
+                }
+                //至少2个字符进行搜索
+                if(txt!="" && txt!="搜索菜单" && txt.length>1){
+                    $.wel.doSearch(txt);
+                }
+            }
+        },  
+        onListClick:function(e){
+            var el=e.target;  
+            if(el){
+                if($.nodeName(el,"em")){
+                    el=el.parentNode;
+                }
+                if($.nodeName(el,"div")){
+                    //获取菜单数据
+                    var idx = $.inArray(el,$("#nav_search_list li"));
+                    //设置当前项
+                    $.wel.hideList();
+                    if(idx > -1){
+                        currentListIdx = idx;
+                        $("#nav_search_list li[class=on]").removeClass("on");
+                        $("#nav_search_list li:nth-child(" +(currentListIdx+1)+ ")").addClass("on");
+                    }
+                    
+                }
+            }
+            return false;
+        },     
+           
+        doSearch:function(txt){
+            if($.wel.SEARCH_TXT == txt){
+                return;
+            }
+            $.wel.SEARCH_TXT=txt;
+            $.httphandler.getJsonp("com.asiainfo.touchframe.view.handler.MenuHandler","searchMenu","q=" + encodeURIComponent(txt),function(data){              
+                data = parseErrorData(data);  
+              //  alert(data);              
+                currentListIdx = -1;
+                var list_ct = $("#nav_search_list");
+                list_ct.empty();       
+                if(data){
+                    if(data.indexOf("error:") == 0){
+                        alert("菜单搜索发生错误：" + data);
+                        return;
+                    }
+                    list_ct[0].innerHTML=data;
+                    listCount = list_ct.find("a").length;
+                    if(listCount > 0){
+                        if(!listVisible){
+                            $.wel.showList();
+                        }else{ //重新设置高度
+                            $.wel.reHeight();
+                        }
+                    }
+                }
+            });
+        },    
+                      	
+		showDayOrMonthData: function(type){
+			var typeStr = type.data;
+			var param = "&TYPE_DAY=" + typeStr;
+			//加载图标的数据
+			$.ajax.submit(null, "getBusinessTradeData", param, "BusinessPart", 
+				function(data){
+					if(data && data.length > 0){
+						if(typeStr && typeStr == "1"){//当日
+							$("#NOW_DAY").addClass("e_segmentOn");
+							$("#NOW_MONTH").removeClass("e_segmentOn");
+						}else{//当月
+							$("#NOW_MONTH").addClass("e_segmentOn");
+							$("#NOW_DAY").removeClass("e_segmentOn");
+						}
+						$("#SUCCESS_NUM").html(data.get("SUCCESS_NUM"));
+						$("#FAILED_NUM").html(data.get("FAILED_NUM"));
+						$("#TRADE_SUM").html(data.get("TRADE_SUM"));
+					}
+				},
+				function(code, info, detail){
+					$.endPageLoading();
+					MessageBox.error("加载数据失败",info,null, null);
+				},function(){
+					$.endPageLoading();
+					MessageBox.alert("告警提示","加载数据超时！");
+			});
+		},
+		
+		//热门搜索
+		hotSearch: function(obj){
+			var dataId = $($(obj).children("input")[0]).val();
+			alert(dataId);
+		},
+		
+		showSearchData: function(){
+			var searchText = $("#SEARCH_PRO").val();
+			if(searchText){
+				$.wel.loadSearchData();
+				$('#UI-querySuggest').addClass('c_float-show');
+			}else{
+				$('#UI-querySuggest').addClass('c_float-show');
+			}
+		},
+		
+		//加载常用的搜索数据
+		loadSearchData: function(){
+			var searchText = $("#SEARCH_PRO").val();
+			var param = "&SEARCH_PRO=" + searchText;
+			$.ajax.submit(null, "getSearchData", param, null, 
+				function(dataSet){
+					if(dataSet && dataSet.length > 0){
+						var showHtml = $.wel.buildSearchDataHtml(dataSet);
+						$("#SEARCH_PART").html("");
+						$("#SEARCH_PART").append(showHtml);
+					}else{
+						$("#SEARCH_PART").html("");
+					}
+				},
+				function(code, info, detail){
+					$.endPageLoading();
+					MessageBox.error("加载数据失败",info,null, null);
+				},function(){
+					$.endPageLoading();
+					MessageBox.alert("告警提示","加载数据超时！");
+			});
+		},
+		
+		//组装常用搜索框的数据
+		buildSearchDataHtml : function(dataSet){
+			var reStr = "";
+			if(dataSet && dataSet.length > 0){
+				var popHtml = [];
+				for(var i=0; i<dataSet.length; i++){
+					var temp = dataSet.get(i);
+					var code = temp.get("CODE");
+					var pic = temp.get("PIC");
+					var color = temp.get("COLOR");
+					var titleContent = temp.get("TITLE_CONTENT");
+					var title1 = temp.get("TITLE_1");
+					var title2 = temp.get("TITLE_2");
+					var title3 = temp.get("TITLE_3");
+					var content = temp.get("CONTENT");
+					var typeCode = temp.get("TYPE_CODE");
+					var typeName = temp.get("TYPE_NAME");
+					
+					var className = "e_tag";
+					if(color) className += "-" + color;
+					
+					var title = "'"+titleContent+"'";
+					popHtml.push('<li class="link" onclick="$.wel.setSelectData('+code+','+title+');">');
+					if(pic){
+						popHtml.push('<div class="pic">');
+						popHtml.push('<img src="frame/img/hotSearch/'+pic+'"/>');
+						popHtml.push('</div>');
+					}
+					popHtml.push('<div class="main">');
+					popHtml.push('	<div class="title">');
+					if(title1){
+						popHtml.push(		title1 + '<span class="e_red">'+title2+'</span>' + title3);
+					}else{
+						popHtml.push(titleContent);
+					}
+					popHtml.push('	</div>');
+					popHtml.push('	<div class="content">'+content+'</div>');
+					popHtml.push('</div>');
+					popHtml.push('<div class="side">');
+					popHtml.push('	<div class="'+className+'">');
+					popHtml.push('		<span class="e_tagText">'+typeName+'</span>');
+					popHtml.push('	</div>');
+					popHtml.push('</div>');
+					popHtml.push('</li>');
+				}
+				reStr = popHtml.join("");
+				popHtml = null;
+			}
+			return reStr;
+		},
+		
+		setSelectData: function(code, name){
+			$("#SEARCH_PRO").val(name);
+			this.showFlag = true;
+			$('#UI-querySuggest').removeClass('c_float-show');
+		},
+		
+		hideLayer: function(event){
+			var layer = $('#UI-querySuggest')[0];
+			var searchSpan = $('#SEARCH_PRO')[0];
+			var button = $("#SEARCH_BUTTON")[0];
+			var isIn = (function () {
+				var tempDom = event.target;
+				while(tempDom != document.body && tempDom != layer && tempDom != searchSpan && tempDom != button){
+					tempDom = tempDom.parentNode;
+				} 
+				if(tempDom != document.body) {
+					return true;
+				} else {
+					return false;
+				}
+			})();
+			if(!isIn){
+				$('#UI-querySuggest').removeClass('c_float-show');
+			} else if(!this.showFlag){
+				this.showFlag = false;
+				$('#UI-querySuggest').addClass('c_float-show');
+			}
+		},
+		
+		//加载近期政策
+		loadRecentRecommendData: function(param){
+			if(!param) param="";
+			$.ajax.submit(null, "getRecentRecommendData", param, "StaffInfoPart", 
+				function(data){
+					$("#loadingPage").css("display", "none");
+					if(data && data.length > 0){
+						$("#NOW_DAY").bind("click", "1", $.wel.showDayOrMonthData);
+						$("#NOW_MONTH").bind("click", "2", $.wel.showDayOrMonthData);
+						
+						$("#NOWDAY_PROMPT_NUM").html(data.get("NOWDAY_PROMPT_NUM"));
+						$("#ALL_PROMPT_NUM").html(data.get("ALL_PROMPT_NUM"));
+						$("#SCORE_NUM").html(data.get("SCORE_NUM"));
+						$("#SORT_PROMPT_NUM").html(data.get("SORT_PROMPT_NUM"));
+						
+						$("#SUCCESS_NUM").html(data.get("SUCCESS_NUM"));
+						$("#FAILED_NUM").html(data.get("FAILED_NUM"));
+						$("#TRADE_SUM").html(data.get("TRADE_SUM"));
+						
+						var searchSet = data.get("SEARCH_DATA");
+						if(searchSet && searchSet.length > 0){
+							var showHtml = $.wel.buildSearchDataHtml(searchSet);
+							$("#SEARCH_PART").html("");
+							$("#SEARCH_PART").html(showHtml);
+						}else{
+							$("#SEARCH_PART").html("");
+						}
+						
+						//近期政策
+						var dataSet = data.get("PROMPT_DATA_INFOS");
+						if(dataSet && dataSet.length > 0){
+							var bindPromptData = $.DataMap();
+							var popHtml = [];
+							for(var i=0; i<dataSet.length; i++){
+								var temp = dataSet.get(i);
+								var pic = temp.get("PIC");
+								var color = temp.get("COLOR");
+								var title = temp.get("TITLE");
+								var content = temp.get("CONTENT");
+								var typeName = temp.get("TYPE_NAME");
+								
+								var className = "e_tag e_tag";
+								if(color) className += "-" + color;
+								var liId = "LATEST_PROMPT_" + i;
+								popHtml.push('<li class="link" id="'+liId+'">');
+								popHtml.push('<div class="pic" style="width:8.57em;">');
+								if(pic){
+									popHtml.push('<img style="width:8.57em; height:8.57em;" src="frame/img/commodity/'+pic+'" alt="" />');
+								}else{
+									popHtml.push('<img style="width:8.57em; height:8.57em;" src="frame/img/commodity/025.GPRS.png" alt="" />');
+								}
+								popHtml.push('</div>');
+								popHtml.push('<div class="main">');
+								popHtml.push('	<div class="title">');
+								popHtml.push(		title);
+								popHtml.push('	</div>');
+								popHtml.push('	<div class="content content-row-3">'+content+'</div>');
+								popHtml.push('</div>');
+								popHtml.push('<div class="side">');
+								popHtml.push('	<div class="'+className+'">');
+								popHtml.push(		typeName);
+								popHtml.push('	</div>');
+								popHtml.push('</div>');
+								popHtml.push('<div class="more"></div>');
+								popHtml.push('</li>\r\n');
+								bindPromptData.put(liId, temp);
+							}
+							$("#RECENT_RECOMMEND").html("");
+							$("#RECENT_RECOMMEND").html(popHtml.join(""));
+							popHtml = null;
+							$.wel.bindLatestPromptInfo(bindPromptData);
+						}
+						else 
+						{
+							var retHtml = [];
+							retHtml.push('<div id="CommonActiveLoadingPage" style="width: 30em; height: 30em">');
+							retHtml.push('<iframe id="CommonActiveLoadingFrame" name="userLoadingFrame" class="m_mainFrame" frameborder="0" src="" ></iframe>');
+							retHtml.push(' <div class="c_msg c_msg-full ">');
+							retHtml.push(' 	<div class="wrapper">');
+							retHtml.push(' 	<div class="emote"></div>');
+							retHtml.push(' 	<div class="info"><div class="text">');
+							retHtml.push(' 	<div class="title e_red">您还没有配置近期政策信息 </div>');
+							retHtml.push(' 	</div></div>');
+							retHtml.push('</div></div>');
+							retHtml.push('</div>');
+							$("#RECENT_RECOMMEND").html("");
+							$("#RECENT_RECOMMEND").html(retHtml.join(""));
+						}
+					}	
+				},
+				function(code, info, detail){
+					//$.endPageLoading();
+					$("#loadingPage").css("display", "none");
+					MessageBox.error("加载近期政策数据失败",info,null, null);
+				},function(){
+					//$.endPageLoading();
+					$("#loadingPage").css("display", "none");
+					MessageBox.alert("告警提示","加载数据超时！");
+			});
+		},
+		
+		bindLatestPromptInfo: function(bindData){
+			if(bindData && bindData.length > 0){
+				bindData.eachKey(function(key, value){
+					$("#"+key).bind("click", function(){
+						$.wel.redirectUrl(value);
+					});
+				});
+			}
+		},
+		
+		//近期政策弹出的url
+		redirectUrl: function(temp){
+			var code = temp.get("CODE");
+			var url = temp.get("URL");
+			var elemTypeCode = temp.get("ELEMENT_TYPE_CODE");
+			if(elemTypeCode && (elemTypeCode == 'P' || elemTypeCode == 'S' || elemTypeCode == 'D'))
+			{
+				$.wel.changeUserProduct();
+			}
+			else if(elemTypeCode && elemTypeCode == 'K')
+			{
+				$.wel.saleActive();
+			}
+			
+		},
+		
+		//近期政策更多
+		moreRecentCommon: function(){
+			parent.$.menuopener.openMenu("icrm938s", "近期营销政策配置", "/order/iorder?service=page/sundryquery.saleactive.RecentPolicyConfig");
+		},
+		
+        //套餐使用量查询
+        VoiceUser: function(){
+            parent.$.menuopener.openMenu("BIL1525", "套餐使用量查询", "/acctmanm/acctmanm?service=page/cdr.discntquery.DiscntQuery&listener=callCenterInit&entrylistener=myInitialize");
+        },
+        
+        //4G共享套餐使用量查询
+        DataUse: function(){
+            parent.$.menuopener.openMenu("BIL1553", "4G共享套餐使用量查询", "/acctmanm/acctmanm?service=page/cdr.discntquery.ShareDiscntQuery&listener=callCenterInit&entrylistener=myInitialize");
+        },
+                		
+		//常用菜单
+		buildDailyMenuHtml: function(popHtml){
+			/*for(var i=0; i<menuSet.length; i++){
+				var temp = menuSet.get(i);
+				var menuId = temp.get("MENU_ID");
+				var menuTitle = temp.get("MENU_TITLE");
+				var menuModeName = temp.get("MENU_MODE_NAME");
+				var pic = temp.get("PIC");
+				menuId = "'" + menuId + "'";
+				menuTitle = "'" + menuTitle + "'";
+				menuModeName = "'" + menuModeName + "'";
+				menuHtml.push('<li class="link" onclick="$.wel.openMenuBar('+menuId+','+menuTitle+','+menuModeName+')">');
+				menuHtml.push('    <div class="pic"><img src="frame/img/menu/'+pic+'" alt="" /></div>');
+				menuHtml.push('	   <div class="main">');
+				menuHtml.push('        <div class="content content-row-2">'+menuTitle+'</div>');
+				menuHtml.push('    </div>');
+				menuHtml.push('</li>\r\n');
+			}*/
+			//parent.$.menuopener.openMenu("crm9321", "营销活动受理", "/personserv/personserv?service=page/saleactive.SaleActiveTrade&listener=onInitTrade&LABEL_ID=S1000&ACTIVE_TYPE=CM");
+			//parent.$.menuopener.openMenu("crm9211", "产品变更", "/personserv/personserv?service=page/person.ChangeProduct&listener=onInitTrade");
+	
+			popHtml.push('<div class="c_list c_list-border c_list-line c_list-col-6 c_list-v c_list-pic-s">');
+			popHtml.push('		<ul>');
+			popHtml.push('			<li class="link" onclick="$.wel.merchQry()")">');
+			popHtml.push('				<div class="pic"><img src="frame/img/menu/zhangdanchaxun.png" alt="" /></div>');
+			popHtml.push('	   			<div class="main">');
+			popHtml.push('       			<div class="content content-row-2">商品订购</div>');
+			popHtml.push('    			</div>');
+			popHtml.push('			</li>');
+			popHtml.push('			<li class="link" onclick="$.wel.billSet()">');
+			popHtml.push('				<div class="pic"><img src="frame/img/menu/huafeishouqu.png" alt="" /></div>');
+			popHtml.push('	   			<div class="main">');
+			popHtml.push('        			<div class="content content-row-2">话费收取</div>');
+			popHtml.push('    			</div>');
+			popHtml.push('			</li>');
+			popHtml.push('			<li class="link" onclick="$.wel.billQry()")">');
+			popHtml.push('				<div class="pic"><img src="frame/img/menu/zhangdanchaxun.png" alt="" /></div>');
+			popHtml.push('	   			<div class="main">');
+			popHtml.push('       			<div class="content content-row-2">用户账单查询</div>');
+			popHtml.push('    			</div>');
+			popHtml.push('			</li>');
+			
+//			popHtml.push('			<li class="link" onclick="$.wel.changeUserProduct()">');
+//			popHtml.push('				<div class="pic"><img src="frame/img/menu/chanpinbiangeng.png" alt="" /></div>');
+//			popHtml.push('	   <div class="main">');
+//			popHtml.push('        <div class="content content-row-2">产品变更</div>');
+//			popHtml.push('    </div>');
+//			popHtml.push('			</li>');
+//			popHtml.push('			<li class="link" onclick="$.wel.saleActive()">');
+//			popHtml.push('				<div class="pic"><img src="frame/img/menu/yingxiaohuodongshouli.png" alt="" /></div>');
+//			popHtml.push('	   <div class="main">');
+//			popHtml.push('        <div class="content content-row-2">营销活动受理</div>');
+//			popHtml.push('    </div>');
+//			popHtml.push('			</li>');
+			
+			popHtml.push('			<li class="link" onclick="$.wel.platTrade()">');
+			popHtml.push('				<div class="pic"><img src="frame/img/menu/pingtaiyewushouli.png" alt="" /></div>');
+			popHtml.push('	   			<div class="main">');
+			popHtml.push('       	 		<div class="content content-row-2">平台业务办理</div>');
+			popHtml.push('   			</div>');
+			popHtml.push('			</li>');
+			
+			
+			popHtml.push('			<li class="link" onclick="$.wel.scoreChange()">');
+			popHtml.push('				<div class="pic"><img src="frame/img/menu/jifenduihuan.png" alt="" /></div>');
+			popHtml.push('	   <div class="main">');
+			popHtml.push('        <div class="content content-row-2">积分兑换</div>');
+			popHtml.push('    </div>');
+			popHtml.push('			</li>');
+			
+			popHtml.push('		</ul>');
+			popHtml.push('	</div>');
+		},
+		
+		merchQry: function(){
+			parent.$.menuopener.openMenu("icrm999", "商品订购", "/order/iorder?service=page/merch.MerchOrder");
+		},
+		
+		saleActive: function(){
+			parent.$.menuopener.openMenu("crm9321", "营销活动受理", "/order/order?service=page/saleactive.SaleActiveTrade&listener=onInitTrade&LABEL_ID=S1000&ACTIVE_TYPE=CM");
+		},
+		billSet: function(){
+			//parent.$.menuopener.openMenu("BIL1120", "话费收取", "/iacctmanm/iacctmanm?service=page/am.cs.core.payment.Payment&listener=myInitialize");
+			parent.$.menuopener.openMenu("BIL1101", "话费收取", "/acctmanm/acctmanm?service=page/amcharge.payfee.PayFee&listener=myInitialize&NOTICE=TRUE");
+		},
+		
+		billQry: function(){
+			parent.$.menuopener.openMenu("BIL1606", "用户账单查询", "/acctmanm/acctmanm?service=page/amarchquery.queryuserbill.QueryUserBill&listener=callCenterInit&entrylistener=myInitialize");
+		},
+		platTrade: function(){
+			parent.$.menuopener.openMenu("crm9251", "平台业务受理", "/order/order?service=page/plat.PlatOrder&listener=init");
+		},
+		scoreChange: function(){
+			parent.$.menuopener.openMenu("icrm915", "积分兑换", "/order/iorder?service=page/person.scoremgr.ScoreExchange&listener=onInitTrade&authType=00&TRADE_TYPE_CODE=330");
+		},
+		
+		openMenuBar: function(menuId, title, modeName){
+			parent.$.menuopener.openMenu(menuId, title, modeName);
+		},
+		
+		//查询用户推荐页面的信息
+		getUserPromptInfo: function(sn, userId, custId, acctId, data){
+			var param = "&SERIAL_NUMBER=" + sn + "&USER_ID=" + userId + "&CUST_ID=" + custId + "&ACCT_ID=" + acctId;
+			if(data && data.length > 0){
+				param += "&MIN_TOTAL=" + data.get("MIN_TOTAL") + "&MIN_USED=" + data.get("MIN_USED") + "&MIN_BALANCE=" + data.get("MIN_BALANCE")
+					+"&GPRS_TOTAL_M=" + data.get("GPRS_TOTAL_M") + "&GPRS_USED_M=" + data.get("GPRS_USED_M") + "&GPRS_BALANCE_M=" + data.get("GPRS_BALANCE_M");
+			}
+			$("#UserVoiceFlowPart").css("display", "");
+			$.ajax.submit(null, "getUserPromptInfo", param, "UserVoiceFlowPart", 
+				function(data){
+					$("#userLoadingPage").css("display", "none");
+					var popHtml = [];
+					if(data && data.length > 0){
+						$.wel.buildMavgConsumeHtml(popHtml, data);
+						//展示快捷菜单
+						$.wel.buildDailyMenuHtml(popHtml);
+						
+						//营销推荐信息
+						popHtml.push('<div class="c_title">');
+						popHtml.push('	<div class="text">营销推荐</div>');
+						popHtml.push('</div>');
+						var resultCode = data.get("X_RESULTCODE");
+						var resultInfo = data.get("X_RESULTINFO");
+						var salePromptInfos = data.get("CAMPNS");
+						var bindData = $.DataMap();
+						if(resultCode != null && resultCode == "0"){
+							if(salePromptInfos && salePromptInfos.length > 0){
+								popHtml.push('<div class="c_list c_list-border c_list-line">');
+								popHtml.push('	<ul>');
+								$.wel.buildSalePromptHtml(popHtml, salePromptInfos, bindData, sn, userId);
+								popHtml.push('	</ul>');
+								popHtml.push('</div>');
+								popHtml.push('<div class="c_space"></div>');
+							}else{
+								$.wel.buildTipInfo(popHtml, resultInfo);
+							}
+						}else if(resultCode != null && resultCode == "error"){
+							$.wel.buildTipInfo(popHtml, resultInfo);
+						}else{
+							$.wel.buildTipInfo(popHtml, resultInfo);
+						}
+						$("#USER_PROMPT_PART").html("");
+						$("#USER_PROMPT_PART").html(popHtml.join(""));
+						popHtml = null;
+						$.wel.bindUserInfo(bindData);
+					}
+				},
+				function(code, info, detail){
+					$.endPageLoading();
+					$("#userLoadingPage").css("display", "none");
+					MessageBox.error("加载数据失败",info,null, null);
+				},function(){
+					$.endPageLoading();
+					$("#userLoadingPage").css("display", "none");
+					MessageBox.alert("告警提示","加载数据超时！");
+			});
+		},
+		
+		buildMavgConsumeHtml: function(popHtml, data){
+			var mavgConsume = data.get("MAVG_CONSUME");
+			var mavgFlow = data.get("MAVG_FLOW");
+			var mavgTalkTime = data.get("MAVG_TALKTIME");
+			if(!mavgConsume) mavgConsume="0";
+			if(!mavgFlow) mavgFlow="0";
+			if(!mavgTalkTime) mavgTalkTime="0";
+			if(mavgConsume=="0"&&mavgFlow=="0"&&mavgTalkTime=="0"){
+            popHtml.push('<div class="c_space"></div>');
+            popHtml.push('<div class="c_box c_box-border" style="display:none">');
+            popHtml.push('  <div class="c_list c_list-col-3 c_list-line">');
+            popHtml.push('      <ul>');
+            popHtml.push('          <li class="link">');
+            popHtml.push('              <div class="main e_tag e_tag-red">♦ 月均消费： <span id="MAVG_CONSUME">'+mavgConsume+'</span></div>');
+            popHtml.push('          </li>');
+            popHtml.push('          <li class="link">');
+            popHtml.push('              <div class="main e_tag e_tag-orange">♦ 月均流量： <span id="MAVG_FLOW">'+mavgFlow+'</span></div>');
+            popHtml.push('          </li>');
+            popHtml.push('          <li class="link">');
+            popHtml.push('              <div class="main e_tag e_tag-green">♦ 月均通话时长： <span id="MAVG_TALKTIME">'+mavgTalkTime+'</span></div>');
+            popHtml.push('          </li>');
+            popHtml.push('      </ul>');
+            popHtml.push('  </div>');
+            popHtml.push('</div>');			    
+			}else{
+            popHtml.push('<div class="c_space"></div>');
+            popHtml.push('<div class="c_box c_box-border">');
+            popHtml.push('  <div class="c_list c_list-col-3 c_list-line">');
+            popHtml.push('      <ul>');
+            popHtml.push('          <li class="link">');
+            popHtml.push('              <div class="main e_tag e_tag-red">♦ 月均消费： <span id="MAVG_CONSUME">'+mavgConsume+'</span></div>');
+            popHtml.push('          </li>');
+            popHtml.push('          <li class="link">');
+            popHtml.push('              <div class="main e_tag e_tag-orange">♦ 月均流量： <span id="MAVG_FLOW">'+mavgFlow+'</span></div>');
+            popHtml.push('          </li>');
+            popHtml.push('          <li class="link">');
+            popHtml.push('              <div class="main e_tag e_tag-green">♦ 月均通话时长： <span id="MAVG_TALKTIME">'+mavgTalkTime+'</span></div>');
+            popHtml.push('          </li>');
+            popHtml.push('      </ul>');
+            popHtml.push('  </div>');
+            popHtml.push('</div>');			    
+			}
+
+		},
+		
+		//推荐产品的数据
+		buildPromptProductHtml: function(popHtml, productDesc, sn, userId, productId){
+			//popHtml.push('<div class="c_space"></div>');
+			popHtml.push('<div class="c_box c_box-border">');
+			popHtml.push('	<div class="l_col">');
+			popHtml.push('		<div class="l_colItem">');
+			popHtml.push('			<div class="c_msg c_msg-help c_msg-s c_msg-h">');
+			popHtml.push('				<div class="wrapper">');
+			popHtml.push('					<div class="emote"></div>');
+			popHtml.push('					<div class="info">');
+			popHtml.push('						<div class="text">');
+			popHtml.push('							<div class="title" style="line-height:1.4em;">');
+			popHtml.push(productDesc);
+			popHtml.push('							</div>');
+			popHtml.push('						</div>');
+			popHtml.push('					</div>');
+			popHtml.push('				</div>');
+			popHtml.push('			</div>');
+			popHtml.push('		</div>');
+			popHtml.push('		<div class="l_colItem" style="width:14.29em;">');
+			popHtml.push('			<div class="c_space"></div>');
+			popHtml.push('				<div class="l_padding-4" onclick="$.wel.changeUserProduct('+sn+','+userId+','+productId+')">');
+			popHtml.push('					<button class="e_button-width-m e_button-r e_button-green"><span class="e_ico-change"></span><span>换套餐</span></button>');
+			popHtml.push('				</div>');
+			popHtml.push('			</div>');
+			popHtml.push('		</div>');
+			popHtml.push('	</div>');
+			popHtml.push('</div>');
+		},
+		//营销推荐信息
+		buildSalePromptHtml: function(popHtml, salePromptInfos, bindData, sn, userId){
+			for(var i=0; i<salePromptInfos.length; i++){
+				var temp = salePromptInfos.get(i);
+				temp.put("SERIAL_NUMBER", sn);
+				temp.put("USER_ID", userId);
+				var chanlScore = temp.get("CHNL_SCORE");//业务推荐积分
+				var packageDesc = temp.get("CHNL_TEMP_CONTENT");
+				var smsScore = temp.get("SMS_SCORE");//短信积分
+				var smsContent = temp.get("CHNL_TEMP_CONTENT_SMS");//短信内容
+				var busiList = temp.get("BUSI_LIST");
+				var campnName = temp.get("CAMPN_NAME");
+				var busiTypeId = "";//业务ID
+				if(busiList){
+					var attrs = busiList.get(0,'BUSI_LIST');
+					var arrt = attrs.split("#");
+					if(arrt.length >= 2){
+						busiTypeId = arrt[1];
+					}
+				}
+				var tradeFlag = (busiTypeId && chanlScore && chanlScore!="0")?true:false;
+				var smsFlag = (smsContent && smsScore && smsScore!="0")?true:false;
+				
+				var saleTradeId = "SALE_TRADE_" + i;
+				var saleShopTradeId = "SALE_TRADE_SHOP_" + i;
+				var saleSmsTradeId = "SALE_TRADE_SMS_" + i;
+				popHtml.push('<li class="link">');
+				popHtml.push('	<div class="main" style="width:68%">');
+				if(campnName){
+					popHtml.push('		<div class="title"><span class="e_red">推荐'+i+':'+campnName+'</span></div>');
+				}else{
+					popHtml.push('		<div class="title"><span class="e_red">推荐'+i+'</span></div>');
+				}
+				popHtml.push('		<div class="content content-row-4">'+packageDesc+'</div>');
+				popHtml.push('	</div>');
+				popHtml.push('	<div class="c_box c_list">');
+				popHtml.push('		<ul>');
+				if(tradeFlag){
+					popHtml.push('			<li class="link">');
+					popHtml.push('				<button class="main e_left e_button-m e_button-r e_button-green" type="button" id="'+saleTradeId+'">');
+					popHtml.push('					<span class="e_ico-ok"></span><span>直接办理<span class="e_red e_strong">【积分：'+chanlScore+'】</span></span>');
+					popHtml.push('				</button>');
+					popHtml.push('			</li>');
+					/*popHtml.push('			<li class="link">');
+					popHtml.push('				<button class="main e_left e_button-m e_button-r e_button-orange" type="button" id="'+saleShopTradeId+'">');
+					popHtml.push('					<span class="e_ico-cart"></span><span>加入购物车<span class="e_red e_strong">【积分：'+chanlScore+'】</span></span>');
+					popHtml.push('				</button>');
+					popHtml.push('			</li>');*/
+				}
+				if(smsFlag){
+					popHtml.push('			<li class="link">');
+					popHtml.push('				<button class="main e_left e_button-m e_button-r e_button-blue" type="button" id="'+saleSmsTradeId+'">');
+					popHtml.push('					<span class="e_ico-speak"></span><span>短信办理<span class="e_red e_strong">【积分：'+smsScore+'】</span></span>');
+					popHtml.push('				</button>');
+					popHtml.push('			</li>');
+				}
+				popHtml.push('		</ul>');
+				popHtml.push('	</div>');
+				popHtml.push('</li>');
+				bindData.put(saleTradeId, temp);
+				bindData.put(saleShopTradeId, temp);
+				bindData.put(saleSmsTradeId, temp);
+			}
+		},
+		
+		buildTipInfo: function(popHtml, resultInfo){
+			popHtml.push(' <div class="c_msg e_center">');
+			popHtml.push(' 	<div class="wrapper">');
+			popHtml.push(' 	<div class="emote"></div>');
+			popHtml.push(' 	<div class="info"><div class="text">');
+			popHtml.push(' 	<div class="title e_red">暂无可推荐营销信息 </div>');
+			popHtml.push(' 	</div></div>');
+			popHtml.push('</div></div>');
+		},
+		
+		//绑定事件
+		bindUserInfo: function(bindData){
+			if(bindData && bindData.length > 0){
+				bindData.eachKey(function(key, value){
+					//购物车
+					if(key.indexOf("SALE_TRADE_SHOP_") != -1){
+						$("#"+key).bind("click", function(){
+							$.wel.changeUserSalePackage("2", value, key);
+						});
+					}else if(key.indexOf("SALE_TRADE_SMS_") != -1){
+						//短信
+						$("#"+key).bind("click", function(){
+							$.wel.changeUserSalePackage("3", value, key);
+						});
+					}else{//受理
+						$("#"+key).bind("click", function(){
+							$.wel.changeUserSalePackage("1", value, key);
+						});
+					}
+				});
+			}
+		},
+		
+		//套餐变更
+		changeUserProduct: function(sn, userId, productId){
+			//alert(sn+"=="+userId+"=="+productId);
+			parent.$.menuopener.openMenu("crm9211", "产品变更", "/personserv/personserv?service=page/person.ChangeProduct&listener=onInitTrade");
+		},
+		
+		//营销推荐受理 1:办理, 2:加入购物车, 3:短信办理
+		changeUserSalePackage: function(type, temp, key){
+			var sn = temp.get("SERIAL_NUMBER");//活动标识
+			var userId = temp.get("USER_ID");//活动标识
+			var campId = temp.get("CAMPN_ID");//活动标识
+			var chanlScore = temp.get("CHNL_SCORE");//业务推荐积分
+			var smsScore = temp.get("SMS_SCORE");//短信积分
+			var smsContent = temp.get("CHNL_TEMP_CONTENT_SMS");//短信内容
+			var busiList = temp.get("BUSI_LIST");
+			var busiType = "";//业务类型 P： 产品  B： 优惠  S： 服务  I： 增值服务  C：营销活动   O：其他
+			var busiTypeId = "";//业务ID
+			if(busiList){
+				var attrs = busiList.get(0,'BUSI_LIST');
+				var arrt = attrs.split("#");
+				if(arrt.length >= 2){
+					busiType = arrt[0];
+					busiTypeId = arrt[1];
+				}
+			}
+			var index = key.substring(key.lastIndexOf("_")+1, key.length);
+			if(type && type=="1"){
+				var imParam = "&SERIAL_NUMBER=" + sn + "&CUST_CODE="+ sn +"&USER_ID=" + userId + "&CAMPN_ID=" + campId +
+					+ "&JOB_SCORE=" +chanlScore +"&OBJ_ID="+busiTypeId + "&OBJ_TYPE="+busiType + "&CHNL_TYPE=T000&EXEC_RESULT=1";
+				$.wel.immediatePromptTrade(imParam, index, busiType);
+			}else if(type && type=="2"){
+				//alert("加入购物车: "+sn+"="+userId+"="+campId+"="+busiType+"="+busiTypeId+"="+chanlScore);
+			}else if(type && type=="3"){
+				var param = "&SERIAL_NUMBER=" + sn + "&CUST_CODE="+ sn +"&USER_ID=" + userId + "&CAMPN_ID=" + campId + "&MSG=" + smsContent
+							+ "&JOB_SCORE=" +smsScore +"&OBJ_ID="+busiTypeId + "&OBJ_TYPE="+busiType + "&CHNL_TYPE=T000";
+				$.wel.salePromptSmsTrade(param, index);
+			}
+		},
+		//立即受理
+		immediatePromptTrade: function(param, index, busiType){
+			$.beginPageLoading("受理中。。。");
+			$.ajax.submit(null, "userImmePromptTrade", param, "", 
+				function(data){
+					$.endPageLoading();
+					if(data && data.length > 0){
+						if(data.get("X_RESULTCODE") == "0"){
+							$.wel.openSalePage(busiType);
+							$.wel.disabledButton(index);
+						}else{
+							MessageBox.error("受理失败",data.get("X_RESULTINFO"),null, null);
+						}
+					}
+				},
+				function(code, info, detail){
+					$.endPageLoading();
+					MessageBox.error("受理失败",info,null, null);
+				},function(){
+					$.endPageLoading();
+					MessageBox.alert("告警提示","受理据超时！");
+			});
+		},
+		
+		openSalePage: function(busiType){
+			//产品变更
+			if(busiType && busiType=="P"){
+				parent.$.menuopener.openMenu("icrm999", "商品订购", "/order/iorder?service=page/merch.MerchOrder&init_component=product");
+			}else if(busiType && busiType=="B"){
+				parent.$.menuopener.openMenu("icrm999", "商品订购", "/order/iorder?service=page/merch.MerchOrder&init_component=discnt");
+			}else if(busiType && busiType=="S"){
+				parent.$.menuopener.openMenu("icrm999", "商品订购", "/order/iorder?service=page/merch.MerchOrder&init_component=service");
+			}else if(busiType && busiType=="C"){
+				parent.$.menuopener.openMenu("icrm999", "商品订购", "/order/iorder?service=page/merch.MerchOrder&init_component=saleActiveFilter");
+			}else if(busiType && busiType=="I"){//增值
+				parent.$.menuopener.openMenu("icrm942", "平台业务办理", "/order/iorder?service=page/plat.PlatOrderNew&listener=init&AUTH_TYPE=00");
+			}else if(busiType && busiType=="X"){
+				parent.$.menuopener.openMenu("crm9241", "换卡", "/order/order?service=page/simcardmgr.ChangeCard&listener=onInitTrade");
+			}else if(busiType && busiType=="F"){
+				parent.$.menuopener.openMenu("crm9485", "客户资料实名补录", "/order/order?service=page/person.changecustinfo.RealNameModifyCustInfo");
+			}
+		},
+		
+		//短信受理
+		salePromptSmsTrade: function(param, index){
+			$.beginPageLoading("受理中。。。");
+			$.ajax.submit(null, "userSmsPromptTrade", param, "", 
+				function(data){
+					$.endPageLoading();
+					if(data && data.length > 0){
+						if(data.get("X_RESULTCODE") == "0"){
+							MessageBox.success("受理成功！");
+							$.wel.disabledButton(index);
+						}else{
+							MessageBox.error("受理失败",data.get("X_RESULTINFO"),null, null);
+						}
+					}
+				},
+				function(code, info, detail){
+					$.endPageLoading();
+					MessageBox.error("受理失败",info,null, null);
+				},function(){
+					$.endPageLoading();
+					MessageBox.alert("告警提示","受理据超时！");
+			});
+		},
+		
+		//置灰按钮
+		disabledButton: function(index){
+			//$("#SALE_TRADE_" + index).parent().parent().addClass("e_dis");
+			$("#SALE_TRADE_" + index).parent().parent().parent().parent().addClass("e_dis");
+			$("#SALE_TRADE_" + index).attr("disabled", true).addClass("e_dis");
+			$("#SALE_TRADE_SHOP_" + index).attr("disabled", true).addClass("e_dis");
+			$("#SALE_TRADE_SMS_" + index).attr("disabled", true).addClass("e_dis");
+		},
+		
+		//营销推荐更多
+		moreSalePrompt: function(){
+			//parent.$.navtabset.add("营销推荐", "?service=page/Login", null, null);
+			//parent.$.menuopener.openMenu("crm9211", "产品变更", "/personserv/personserv?service=page/person.ChangeProduct&listener=onInitTrade");
+		}
+	};
+	
+	$(function(){
+		$.wel.init();
+	});
+})(Wade);
+
+var tabWel = null;
+$(document).ready(function(){
+	tabWel = new tabSetWel.newTab("UI-tab","UI-page");
+	//初始化隐藏掉用户界面的信息
+	$("#UserVoiceFlowPart").css("display", "none");
+	
+	//setTimeout(function(){
+		$.wel.loadRecentRecommendData(null);
+	//},15000);
+});
+
+//tab也跳转
+function redirectTableSet(type, sn, userId, custId, acctId, data){
+	if(type && type == "STAFF"){
+		//并清空用户界面的数据
+		$("#USER_PROMPT_PART").html("");
+		$("#noneUserLoadingPage").css("display", "");
+		$("#UserVoiceFlowPart").css("display", "none");
+		tabSetWel.clickButton($("#STAFF_HOME")[0],tabWel);
+	}else if(type && type == "USER"){
+		tabSetWel.clickButton($("#REMOND_USER")[0],tabWel);
+		$("#noneUserLoadingPage").css("display", "none");
+		$("#userLoadingPage").css("display", "");
+		//查询用户界面的信息
+		//setTimeout(function(){
+			$.wel.getUserPromptInfo(sn, userId, custId, acctId, data);
+		//},3000);
+	}else{
+		tabSetWel.clickButton($("#STAFF_HOME")[0],tabWel);
+	}
+}
+
+var tabSetWel = {
+	tabsId: "",
+	pagesId: "",
+	curTab: "0",
+	mode: "",
+	tabs: null,
+	pages: null,
+	
+	newTab: function(tabsId, pagesId){
+		this.tabsId = tabsId;
+		this.pagesId = pagesId;
+		this.tabs = $("#" + tabsId).children();
+		if(this.tabs[0].className == "on"){
+			this.curTab = "0";
+		}else{
+			this.curTab = "noCur";
+			this.mode = "noCurMode";
+		}
+		if(pagesId) { 
+			this.pages = $("#" + pagesId).children();
+		}
+		
+		for ( i = 0; i < this.tabs.length ; i++ ) {
+			this.tabs[i].setAttribute("idx",i);
+			var tab = this;
+			$(this.tabs[i]).bind("click", function () {
+				var that = this;
+				tabSetWel.clickButton(that, tab);
+			});
+		}
+	},
+	
+	clickButton: function(obj, tab){
+		var tempIdx = obj.getAttribute("idx");
+		if (tab.curTab != tempIdx) {
+			obj.className = "on";
+			if(tab.pagesId) { 
+				tab.pages[tempIdx].style.display = "";
+			}
+			if(tab.curTab != "noCur"){
+				tab.tabs[tab.curTab].className = "";
+				if(tab.pagesId) { 
+					tab.pages[tab.curTab].style.display = "none";
+				}
+			}
+			tab.curTab = tempIdx;
+		} else if (tab.mode == "noCurMode") {
+			obj.className = "";
+			if(tab.pagesId) { 
+				tab.pages[tab.curTab].style.display = "none";
+			}
+			tab.curTab = "noCur";
+		}
+	}
+};
+
+function clearDefaultText (el,message)
+{
+var obj = el;
+if(typeof(el) == "string")
+obj = document.getElementById(id);
+if(obj.value == message)
+{
+obj.value = "";
+}
+obj.onblur = function()
+{
+if(obj.value == "")
+{
+   obj.value = message;
+}
+}
+}

@@ -1,0 +1,1208 @@
+(function($){
+	$.extend({feeMgr:{
+		FEE_LIST : $.DatasetList(),		//缓冲的费用列表数据
+		CLAZZ:"com.asiainfo.veris.crm.order.web.frame.csview.common.component.fee.FeeHandler",
+		POS_URL:"/personserv/personserv?service=page/components.fee.PosTrade&listener=onInitTrade",
+		FEE_CONFIG:null,  		//费用配置数据
+		FEE_PAY: null,   		//支付数据
+		POS_INFO: null,   		//POS缴费信息
+		PAY_LIMIT: false,   	//是否只支持一种支付方式
+		
+		BANK_CONFIG: null,     //银行配置数据 支票使用
+		
+		NO_MODIFY_FEETYPE: $.DataMap(), //任何权限都不让修改的费用类型 FEE_MODE, FEE_TYPE_CODE
+		
+		CASH_CODE:"0",	//现金	
+		
+		CHECK_CODE:"-1",	//支票 
+		POS_CODE:"m",	//银联电子商务POS
+		
+		afterChangeFeeAction: null,   //修改后费用触发给业务测的js方法
+		
+		setAfterChangeFeeAction: function(changeAction){
+			this.afterChangeFeeAction=changeAction;
+		},
+		
+		//查询业务费用列表
+		loadTradeFee:function(tradeTypeCode, productId, eparchyCode, vipClassId){
+			var params = "&TRADE_TYPE_CODE="+tradeTypeCode;
+			params += "&PRODUCT_ID="+productId;
+			if(eparchyCode){
+				params += "&EPARCHY_CODE="+eparchyCode;				
+			}
+			if(vipClassId){
+				params += "&VIP_CLASS_ID="+vipClassId;				
+			}
+			
+			$.ajax.submit("", "getTradeFee", params,"",
+				//提交成功回调
+				function(dataset){
+					if(!dataset || (dataset && dataset.length == 0)){
+						return ;
+					}
+					//缓存好费用列表
+					$.feeMgr.FEE_LIST = dataset;
+					$.feeMgr.showFeeList();
+				},function(code, info, detail){
+					$.endPageLoading();
+					MessageBox.alert("错误提示","加载营业费用错误！", null, null, info, detail);
+				},function(){
+					$.endPageLoading();
+					MessageBox.alert("告警提示","加载营业费用超时!");
+			});
+		},
+		
+		//任何权限都不让修改的费用类型 FEE_MODE, FEE_TYPE_CODE	
+		setNoModifyFee : function(feeMode, feeTypeCode){
+			($.feeMgr.NO_MODIFY_FEETYPE).put(feeMode, feeTypeCode);
+		},
+		
+		/**
+		 * 新增费用,[ELEMENT_ID,PAY]非必传参数
+		 * 多业务类型适合必传
+		 * feeData[TRADE_TYPE_CODE,MODE,CODE,FEE,PAY,ELEMENT_ID] 
+		 * 
+		 * 费用为负数的时候需要传个 PAY_TRADE_ID, 返销调支付中心要用到
+		 */
+		insertFee : function(feeData) {
+			if(!feeData) return;
+			//if(feeData.get("FEE") == "0") return;
+			
+			if(!feeData.containsKey("PAY")){
+				feeData.put("PAY", feeData.get("FEE"));		
+			}
+			
+			if(!$.feeMgr.isNumber(feeData)) return;
+			
+			//更新缓冲区费用列表
+			var flag = $.feeMgr.updateCacheFeeList(feeData, "ADD");
+
+			//重新展示费用列表
+			if(flag){
+				$.feeMgr.showFeeList();
+			}	
+		},
+				
+		/**
+		 * 删除费用[FEE,PAY,ELEMENT_ID]非必传参数
+		 * feeData[TRADE_TYPE_CODE,MODE,CODE,FEE,PAY,ELEMENT_ID]
+		 */
+		deleteFee : function(feeData) {
+			if(!feeData) return;
+
+			if(!feeData.containsKey("PAY")){
+				feeData.put("PAY", feeData.get("FEE"));		
+			}
+			
+			if(!$.feeMgr.isNumber(feeData)) return;
+						
+			//删除缓冲区费用列表
+			var flag = $.feeMgr.updateCacheFeeList(feeData, "DEL");
+			
+			//重新展示费用列表
+			if(flag){
+				$.feeMgr.showFeeList();
+			}	
+		},
+		
+		/**
+		 * 删除费用[TRADE_TYPE_CODE,MODE,CODE,ELEMENT_ID]
+		 */
+		removeFee : function(tradeTypeCode, feeMode, feeTypeCode, elementId) {
+			if(!feeMode || !feeTypeCode) return;
+			var feeData = $.DataMap();
+			feeData.put("TRADE_TYPE_CODE", 	tradeTypeCode);
+			feeData.put("MODE", 			feeMode);
+			feeData.put("CODE", 			feeTypeCode);
+			if(elementId){
+				feeData.put("ELEMENT_ID", elementId);
+			}
+
+			//删除缓冲区费用列表
+			var flag = $.feeMgr.updateCacheFeeList(feeData, "REMOVE");
+			
+			//重新展示费用列表
+			if(flag){
+				$.feeMgr.showFeeList();
+			}	
+		},
+		
+		/**
+		 * 修改费用[TRADE_TYPE_CODE,MODE,CODE,FEE,PAY,ELEMENT_ID]
+		 */
+		modFee : function(feeData) {
+			if(!feeData) return;
+
+			//修改缓冲区费用列表
+			var cacheFeeInfo = null;
+			if(feeData.get("ELEMENT_ID")){
+				cacheFeeInfo = $.feeMgr.findFeeInfo(feeData.get("TRADE_TYPE_CODE"), feeData.get("MODE"), feeData.get("CODE"), feeData.get("ELEMENT_ID"));	
+			}else{
+				cacheFeeInfo = $.feeMgr.findFeeInfo(feeData.get("TRADE_TYPE_CODE"), feeData.get("MODE"), feeData.get("CODE"));	
+			}
+			if(cacheFeeInfo){
+				$.feeMgr.deleteFee(cacheFeeInfo);
+				$.feeMgr.insertFee(feeData);
+			}
+		},
+		
+		//更新缓冲区费用列表
+		updateCacheFeeList:function(inFeeData, state){
+			var flag = true;
+			var feeInfo = null;
+			var feeData = $.feeMgr.cloneData(inFeeData);
+			if(feeData.containsKey("ELEMENT_ID")){
+				feeInfo = $.feeMgr.findFeeInfo(feeData.get("TRADE_TYPE_CODE"), feeData.get("MODE"), feeData.get("CODE"), feeData.get("ELEMENT_ID"));	
+			}else{
+				feeInfo = $.feeMgr.findFeeInfo(feeData.get("TRADE_TYPE_CODE"), feeData.get("MODE"), feeData.get("CODE"));	
+			}
+			
+			if(state == "ADD"){
+				if(feeInfo == null){
+					$.feeMgr.FEE_LIST.add(feeData);
+				}else{
+					feeData.put("FEE", parseInt(feeData.get("FEE"))+parseInt(feeInfo.get("FEE")) );
+					feeData.put("PAY", parseInt(feeData.get("PAY"))+parseInt(feeInfo.get("PAY")) );
+					$.feeMgr.FEE_LIST.remove(feeInfo);
+					$.feeMgr.FEE_LIST.add(feeData);
+				}
+			}else if(state == "DEL"){
+				if(feeInfo == null){
+					flag = false;
+					//alert("删除的费用项不存在！");
+				}else{
+					//减费用时候，考虑到实缴费用有可能进行过折扣处理，这里以应缴纳费用作为扣减标准，处理完成以后，需要针对这个再次进行折扣
+					var fee = parseInt(feeInfo.get("FEE"))-parseInt(feeData.get("FEE"));
+					if(fee == 0){
+						$.feeMgr.FEE_LIST.remove(feeInfo);
+					}else{
+						feeData.put("FEE", fee);
+						feeData.put("PAY", fee);
+						
+						$.feeMgr.FEE_LIST.remove(feeInfo);
+						$.feeMgr.FEE_LIST.add(feeData);
+					}
+				}
+			}else if(state == "REMOVE"){
+				if(feeInfo == null){
+					flag = false;
+					//alert("删除的费用项不存在！");
+				}else{
+					$.feeMgr.FEE_LIST.remove(feeInfo);
+				}
+			}
+			feeInfo = null;
+			feeData = null;
+			return flag;
+		},
+
+		//扫描缓冲区，获取费用
+		findFeeInfo : function(tradeTypeCode, feeMode, feeTypeCode, elementId) {
+			if(!tradeTypeCode || !feeMode || !feeTypeCode) return null;
+			var feeInfo = null;
+			if(!$.feeMgr.FEE_LIST) return null;
+			
+			for(var i=0; i<$.feeMgr.FEE_LIST.length; i++){
+				var item = $.feeMgr.FEE_LIST.get(i);
+				if(elementId && item.containsKey("ELEMENT_ID")){
+					if(item.get("TRADE_TYPE_CODE") == tradeTypeCode 
+						&& item.get("MODE") == feeMode
+							&& item.get("CODE") == feeTypeCode 
+								&& item.get("ELEMENT_ID") == elementId){
+						feeInfo = item;
+						break;
+					}
+				}else if(!elementId && !item.containsKey("ELEMENT_ID")){
+					if(item.get("TRADE_TYPE_CODE") == tradeTypeCode 
+						&& item.get("MODE") == feeMode
+							&& item.get("CODE") == feeTypeCode ){
+						feeInfo = item;
+						break;
+					}	
+				}	
+			}
+			return feeInfo;
+		},
+		
+		//清除所有费用
+		clearFeeList : function(tradeTypeCode, feeMode){
+			//如果传入了tradeTypeCode
+			if(tradeTypeCode){
+				//过滤指定的费用列表
+				var tmpFeeList = $.DatasetList();
+				if(!$.feeMgr.FEE_LIST || !$.feeMgr.FEE_LIST.length) return null;
+				($.feeMgr.FEE_LIST).each(function(item, index, totalCount){
+					if(item.get("TRADE_TYPE_CODE") == tradeTypeCode){
+						if(!feeMode){
+							return true;
+						}else if(feeMode && feeMode==item.get("MODE")){
+							return true;
+						}
+					}
+					tmpFeeList.add(item);
+				});
+				
+				$.feeMgr.FEE_LIST = tmpFeeList;
+				$.feeMgr.showFeeList();
+				
+			}else{
+				$.feeMgr.FEE_LIST = $.DatasetList();
+				$.feeMgr.showFeeList();
+				return true;				
+			}
+			
+		},
+		
+		clearFee:function(){
+			$.feeMgr.FEE_LIST = $.feeMgr.FEE_PAY = $.feeMgr.FEE_CONFIG = $.feeMgr.NO_MODIFY_FEETYPE = null;
+		},
+		
+		isNumber:function(feeData){
+			var fee=feeData.get("FEE");
+			var pay=feeData.get("PAY");
+			if(!$.isNumeric(fee)){
+				MessageBox.alert("告警提示","应缴金额格式不正确！");
+				return false;
+			}
+			if(!$.isNumeric(pay)){
+				MessageBox.alert("告警提示","实缴金额格式不正确！");
+				return false;
+			}
+			//将带小数点费用直接四舍五入为整形数字，单位为分
+			feeData.put("FEE", Math.round(parseFloat(fee)));
+			feeData.put("PAY", Math.round(parseFloat(pay)));
+			return true;
+		},
+		
+		//深度克隆DataMap数据
+		cloneData : function(feeData){
+			var feeInfo = $.DataMap();
+			if(!feeData) return feeInfo;
+			feeData.eachKey(function(key, index, totalCount){
+				feeInfo.put(key , feeData.get(key));
+			});
+			return feeInfo;
+		},
+		
+		//深度克隆DatasetList数据
+		cloneDataset : function(feeDataset){
+			var feeInfos = $.DatasetList();
+			if(!feeDataset) return feeInfos;
+			
+			var feeInfo = $.DataMap();
+			for(var i=0; i<feeInfos.length; i++){
+				feeInfo = $.feeMgr.cloneData(feeInfos.get(i));	
+				feeInfos.add(feeInfo);
+			}
+			return feeInfos;
+		},
+		
+		//获取费用台账数据
+		getFeeTrade:function(){
+			var tradeData = $.DataMap();
+			
+			var data = $.feeMgr.FEE_LIST;
+			
+			if(!$.feeMgr.FEE_LIST || !$.feeMgr.FEE_LIST) return tradeData;
+			
+			tradeData.put("X_TRADE_FEESUB", $.feeMgr.getFeeList());
+			//tradeData.put("X_TRADE_PAYMONEY", $.feeMgr.getPayModeList());
+			
+			return tradeData;
+		},
+		//获取费用列表数据
+		getFeeList:function(){
+			var tradeFeeSubList = $.DatasetList(); 
+
+			if(!$.feeMgr.FEE_LIST || !$.feeMgr.FEE_LIST.length){
+				 return tradeFeeSubList;
+			}	
+			for (var i = 0; i < $.feeMgr.FEE_LIST.length; i++) {
+				var item = $.feeMgr.FEE_LIST.get(i);
+				var tradeTypeCode = item.get("TRADE_TYPE_CODE");	//业务类型编码编码
+				var feeMode = item.get("MODE");						//费用类型大类编码
+				var feeTypeCode = item.get("CODE");					//费用类型编码
+				var oldFee = item.get("FEE");						//应缴金额			
+				var fee = item.get("PAY");							//实际缴纳
+				var tradeId = item.get("PAY_TRADE_ID");
+			 	tradeFeeSubList.add($.feeMgr.getFeeData(tradeTypeCode,feeMode,feeTypeCode,oldFee,fee, item.get("ELEMENT_ID"), tradeId));
+			}
+			return tradeFeeSubList;
+		},
+		//获取支付方式数据
+		getPayModeList:function(){
+			var tradePayModeList = $.DatasetList(); 
+			if(!$.feeMgr.FEE_PAY || !$.feeMgr.FEE_PAY.length){
+				return tradePayModeList;
+			}
+			var total= $.feeMgr.FEE_PAY.get("TOTAL");
+			
+			var money = 0;
+			$.feeMgr.FEE_PAY.eachKey(function(key, idx, totalCount){
+				if(key == "TOTAL"){//|| key == "CHECK_INFO"
+					return true;
+				}
+				//排除等于0的支付方式 初始化是0(现金)支付方式
+				if(parseInt($.feeMgr.FEE_PAY.get(key))!= 0){
+					money = $.format.number($.feeMgr.FEE_PAY.get(key), "0");
+					var payMoney = null;
+//					if(key == $.feeMgr.CHECK_CODE){
+//						payMoney = $.feeMgr.getPayModeData(key, money, $.feeMgr.FEE_PAY.get("CHECK_INFO"));
+//					}else{
+						payMoney = $.feeMgr.getPayModeData(key, money);
+//					}
+					tradePayModeList.add(payMoney);
+				}
+			});
+
+			return tradePayModeList;
+		},
+		/**
+		* 获取总费用,默认返回实缴费用
+		* 如果flag=0，返回应缴费用
+		* flag=1或者不填写返回实缴费用
+		*/
+		getTotalFee:function(flag){
+			var totalFee = 0, totalPay = 0; 
+			if(!$.feeMgr.FEE_LIST || !$.feeMgr.FEE_LIST.length){
+				return (flag==0)?totalFee:totalPay;
+			}
+			$.feeMgr.FEE_LIST.each(function(item, idx, totalCount){
+				totalFee += parseInt(item.get("FEE"));
+				totalPay += parseInt(item.get("PAY"));
+			});	
+			return (flag==0)?totalFee:totalPay;
+		},
+		
+		//返回费用列表项
+		getFeeData:function(tradeTypeCode, feeMode, feeTypeCode, oldFee, fee, elementId, tradeId){
+			var data = $.DataMap();
+			data.put("TRADE_TYPE_CODE",		tradeTypeCode);
+			data.put("FEE_TYPE_CODE",		feeTypeCode);
+			data.put("FEE",					fee);	
+			data.put("OLDFEE",				oldFee);
+			data.put("FEE_MODE",			feeMode);
+			data.put("ELEMENT_ID",			elementId);
+			if(elementId){
+				data.put("DISCNT_GIFT_ID",	elementId);
+			}
+			if(tradeId){
+				data.put("PAY_TRADE_ID",	tradeId);
+			}
+			return data;
+		},
+		//返回费用支付项  checkData(支票台账的参数,暂时没用)
+		getPayModeData:function(payModeCode, money, checkData){		
+			var data = $.DataMap();
+			data.put("PAY_MONEY_CODE", payModeCode);
+			data.put("MONEY", money);
+			
+			//如果是支票，则复制数据拼接支票台账
+//			if(payModeCode == $.feeMgr.CHECK_CODE && (checkData && checkData.length>0)){
+//				checkData.eachKey(function(key, index, totalCount){
+//					data.put(key, checkData.get(key));
+//				});
+//			}
+			return data;	
+		},
+		
+		//拼接费用台账数据
+		setFeeSubmitParam:function(){
+			var feeInfo = $.feeMgr.getFeeTrade();
+			if(feeInfo.containsKey("X_TRADE_FEESUB") && feeInfo.get("X_TRADE_FEESUB").length){
+				/**var total= 0;
+				if($.feeMgr.FEE_PAY && $.feeMgr.FEE_PAY.length){
+					total= $.feeMgr.FEE_PAY.get("TOTAL");
+				}
+				if(!feeInfo.containsKey("X_TRADE_PAYMONEY") || feeInfo.get("X_TRADE_PAYMONEY").length<1){
+					//购物车可以没支付数据
+					var buttonType = $.cssubmit.clickButton;
+					if(total!=0 && buttonType!="addShoppingCart"){
+						return false;
+					}
+				}
+				var payMoneys = feeInfo.get("X_TRADE_PAYMONEY");*/
+				$.cssubmit.setParam("X_TRADE_FEESUB",(feeInfo.get("X_TRADE_FEESUB")).toString());
+				/**$.cssubmit.setParam("X_TRADE_PAYMONEY",payMoneys.toString());
+				$.cssubmit.setParam("PAY_TOTAL_FEE", total);
+				var payMode = $("#FEE_PAY_LIST").val();
+				//支票数据传到后台去  CHECK_CARD_NO  CHECK_CARD_NAME  SUPER_BANK_LIST  CHECK_BANK_LIST  CHECK_LIMIT
+				if(payMode && payMode == "1"){
+					if(!$.feeMgr.buildSubCheckCardParam()){
+						return false;
+					}
+				}
+				if(payMode && payMode == "7"){
+					var posreturn = "";
+					if($("#POS_RETURN").attr("checked")){
+						posreturn = "0";
+					}else{
+						posreturn = "1";
+					}
+					$.cssubmit.setParam("POS_RETURN_TAG",posreturn);
+				}*/
+			}
+			return true;
+		},
+	
+		//=======费用内部逻辑=====================		
+		init:function(){
+			$.feeMgr.NO_MODIFY_FEETYPE = $.DataMap();
+			//加载费用配置数据
+			$.httphandler.get($.feeMgr.CLAZZ, "loadFeeConfig", null, 
+				function(jsonData){
+					if(jsonData.data && !$.isEmptyObject(jsonData.data)){
+						$.feeMgr.FEE_CONFIG=jsonData.data;
+					}
+				},
+				function(code, info, detail){
+					MessageBox.alert("错误提示","费用配置加载失败！",null, null, info, detail);
+				},{
+					dataType:"json",
+					simple:true,
+					async: false
+			});
+		},
+		//展示费用信息
+		showFeeList:function(){
+			if(!$.feeMgr.FEE_CONFIG){
+				MessageBox.alert("告警提示", "费用配置数据加载异常！");
+				return;
+			}
+			//如果为空，
+			if(!$.feeMgr.FEE_LIST || !$.feeMgr.FEE_LIST.length){
+				$.feeMgr.hideFeeList();
+				return;
+			}
+			var tradeTypeCode,mode,code,fee,pay;
+			var modeName,modeCfg;
+			var hasPriv=false;
+			var feeArray=[];
+			for(var i=0; i<$.feeMgr.FEE_LIST.length; i++){
+				var feeItem = $.feeMgr.FEE_LIST.get(i);
+				tradeTypeCode = feeItem.get("TRADE_TYPE_CODE");
+				mode=feeItem.get("MODE");
+				code=feeItem.get("CODE");
+				fee= parseInt(feeItem.get("FEE"))/100;		//前台业务送入的费用数据已经校验且全部转换成以分为单位的整数
+				//加载时如果没有实缴数据，则put实缴数据
+				if(!feeItem.containsKey("PAY")){
+					feeItem.put("PAY", feeItem.get("FEE"));
+				}
+				pay = parseInt(feeItem.get("PAY"))/100;
+
+				modeName=$.feeMgr.FEE_CONFIG.FEE_MODES[mode];
+				modeCfg=$.feeMgr.FEE_CONFIG[mode];
+				if(!modeCfg || !modeCfg[code]){
+					MessageBox.alert("告警提示", modeName+"费用类型编码[ "+ code +" ]对应数据不存在！");
+					return;
+				}
+				//
+				feeArray.push('<li>');
+				feeArray.push('	<span class="e_label e_label-gold"><span>'+modeName+'</span></span>');
+				feeArray.push('	<span class="text">'+(modeCfg?modeCfg[code].NAME:'')+'：'+fee+'</span>');
+				feeArray.push('</li>');
+			}
+			$("#FEE_ITEM_LIST").html(feeArray.join(""));
+			$("#FEE_TOTAL").html($.feeMgr.getTotalPayFee()/100);
+			$("#FEE_LIST_PART").css("display","");
+			$("#FEE_PLACEHOLDER").height($("#FEE_LIST_PART").height());
+		},
+		hideFeeList:function(){
+			$("#FEE_LIST_PART").css("display","none");
+			$("#FEE_PLACEHOLDER").height("0");
+		},
+		checkFee:function(okFn, cancelFn){
+			//如果没有费用产生，直接返回
+			if(!$.feeMgr.FEE_LIST || !$.feeMgr.FEE_LIST.length){
+				return true;
+			}
+			else{
+				var checkdata = $.feeMgr.FEE_LIST.get(0);
+				if(checkdata.get("ELEMENT_ID")=='99033146'){
+					return true;
+				}
+			}
+			$.feeMgr.checkFeeSub(okFn, cancelFn);
+			
+//			if(!$.posTradeHFRT.POS_CONFIGHK){
+//				$.posTradeHFRT.POS_CONFIGHK = $.DataMap();
+//			}
+//			//如果海科刷卡支付或返销,刷卡成功,但业务受理失败,则下次业务直接提交,这里保存刷卡的LOG_ID
+//			var traPosLogId =  $.posTradeHFRT.POS_CONFIGHK.get("TRADE_POS_LOGID");
+//			if(traPosLogId){
+//				$.cssubmit.setParam("TRADE_POS_LOGID", traPosLogId);
+//			}
+//			
+//			//如果费用小于0,则根据传入的order_id,去海科融通日志表里面查询下有没数据,有则就强制只能使用 海科 这一种方式进行返销
+//			var cancelOrderId = $.posTradeHFRT.POS_CONFIGHK.get("CANCEL_TRADE_POS_ID"); 
+//			if(!cancelOrderId){
+//				$.feeMgr.checkFeeSub(okFn, cancelFn);
+//				return;
+//			}
+//			var eparchyCode = $.posTradeHFRT.POS_CONFIGHK.get("FEE_EPARCHY_CODE"); 
+//			if(!eparchyCode){
+//				alert("请设置路由地州!");
+//				return;
+//			}
+//			var param = "&TRADE_ID="+cancelOrderId+"&ROUTE_EPARCHY_CODE="+eparchyCode;
+//			$.httphandler.get($.feeMgr.CLAZZ, "getHKPosLog", param, 
+//				function(jsonData){
+//					if(jsonData.data && !$.isEmptyObject(jsonData.data)){
+//						if(jsonData.data.POS_FLAG=="true"){//是使用刷卡收费的
+//							$.posTradeHFRT.POS_CONFIGHK.put("POS_FLAG", true);
+//						}else{
+//							$.posTradeHFRT.POS_CONFIGHK.put("POS_FLAG", false);
+//						}
+//						$.feeMgr.checkFeeSub(okFn, cancelFn);
+//					}
+//				},
+//				function(code, info, detail){
+//					MessageBox.alert("错误提示","获取POS交易日志失败！",null, null, info, detail);
+//				},{
+//					dataType:"json",
+//					simple:true,
+//					async: false
+//			});
+		},
+		
+		reLoadFeeData: function(){
+			$("#FEE_INPUT_LIST").html("");
+			//解除事件绑定
+			$("#FEE_INPUT_LIST input").unbind("focus",$.feeMgr.events.onFeeInputFocus);
+			$("#FEE_INPUT_LIST input").unbind("blur",$.feeMgr.events.onFeeInputBlur);
+			var tradeTypeCode,mode,code,fee,pay;
+			var modeName,modeCfg;
+			var hasPriv=false;
+			var feeArray=[];
+			for(var idx=0; idx<$.feeMgr.FEE_LIST.length; idx++){
+				var feeItem = $.feeMgr.FEE_LIST.get(idx);
+				tradeTypeCode = feeItem.get("TRADE_TYPE_CODE");
+				mode=feeItem.get("MODE");
+				code=feeItem.get("CODE");
+				fee= parseInt(feeItem.get("FEE"))/100;		//前台业务送入的费用数据已经校验且全部转换成以分为单位的整数
+				//加载时如果没有实缴数据，则put实缴数据
+				if(!feeItem.containsKey("PAY") || !$.isNumeric(feeItem.get("PAY")) ){
+					feeItem.put("PAY", feeItem.get("FEE"));
+				}
+				pay = parseInt(feeItem.get("PAY"));
+				pay = Math.round(pay)/100;
+				
+				modeName=$.feeMgr.FEE_CONFIG.FEE_MODES[mode];
+				modeCfg=$.feeMgr.FEE_CONFIG[mode];
+				if(!modeCfg || !modeCfg[code]){
+					MessageBox.alert("告警提示", modeName+"费用类型编码[ "+ code +" ]对应数据不存在！");
+					return;
+				}
+				//判断修改权限
+				hasPriv= $.feeMgr.hasModFeePriv(tradeTypeCode, mode, code);
+				feeArray.push('<tr>');
+				feeArray.push('	<td style="display:none">' + code + '</td>');
+				feeArray.push('	<td>' + modeName + '</td>');
+				feeArray.push('	<td>'+(modeCfg?modeCfg[code].NAME:'')+'</td>');
+				feeArray.push('	<td>'+fee+'</td>');
+				if(hasPriv){
+					feeArray.push('	<td class="edit"><span class="e_input"><span><input name="FEE_ITEM" type="text" idx="'+idx+'" type="text" value="'+pay+'" maxlength="10"/></span></span></td>');
+				}else{
+					feeArray.push('	<td>'+pay+'</td>');
+				}
+				feeArray.push('</tr>');
+			}
+			$("#FEE_INPUT_LIST").html(feeArray.join(""));
+			feeArray=null;
+			//绑定事件
+			$("#FEE_INPUT_LIST input").bind("focus",$.feeMgr.events.onFeeInputFocus);
+			$("#FEE_INPUT_LIST input").bind("blur",$.feeMgr.events.onFeeInputBlur);	
+			
+			$.feeMgr.updatePay();
+			$.feeMgr.changePay();
+		},
+		
+		checkFeeSub: function(okFn, cancelFn){
+			//组装展示费用数据
+			if(!$("#FEE_POPUP") || !$("#FEE_POPUP").length){
+				$.feeMgr.buildFeePoppup();
+			}
+			//解除绑定事件
+			$("#FEEPOPUP_SUBMIT_BTN,#FEEPOPUP_CANCEL_BTN,#FEEPOPUP_CLOSE_BTN").unbind("click");
+			
+			$("#FEEPOPUP_SUBMIT_BTN").bind("click", function(){ 
+				$.feeMgr.submitFee(true,okFn);
+			});
+			$("#FEEPOPUP_CANCEL_BTN,#FEEPOPUP_CLOSE_BTN").bind("click", function(){ 
+				$.feeMgr.submitFee(false,cancelFn);
+			});
+			
+			//解除事件绑定
+			$("#FEE_INPUT_LIST input").unbind("focus",$.feeMgr.events.onFeeInputFocus);
+			$("#FEE_INPUT_LIST input").unbind("blur",$.feeMgr.events.onFeeInputBlur);
+			//清空费用列表
+			$("#FEE_INPUT_LIST").empty();
+			
+			var tradeTypeCode,mode,code,fee,pay;
+			var modeName,modeCfg;
+			var hasPriv=false;
+			var feeArray=[];
+			for(var idx=0; idx<$.feeMgr.FEE_LIST.length; idx++){
+				var feeItem = $.feeMgr.FEE_LIST.get(idx);
+				tradeTypeCode = feeItem.get("TRADE_TYPE_CODE");
+				mode=feeItem.get("MODE");
+				code=feeItem.get("CODE");
+				fee= parseInt(feeItem.get("FEE"))/100;		//前台业务送入的费用数据已经校验且全部转换成以分为单位的整数
+				//加载时如果没有实缴数据，则put实缴数据
+				if(!feeItem.containsKey("PAY") || !$.isNumeric(feeItem.get("PAY")) ){
+					feeItem.put("PAY", feeItem.get("FEE"));
+				}
+				pay = parseInt(feeItem.get("PAY"));
+				pay = Math.round(pay)/100;
+				
+				modeName=$.feeMgr.FEE_CONFIG.FEE_MODES[mode];
+				modeCfg=$.feeMgr.FEE_CONFIG[mode];
+				if(!modeCfg || !modeCfg[code]){
+					MessageBox.alert("告警提示", modeName+"费用类型编码[ "+ code +" ]对应数据不存在！");
+					return;
+				}
+				//判断修改权限
+				hasPriv= $.feeMgr.hasModFeePriv(tradeTypeCode, mode, code);
+				feeArray.push('<tr>');
+				feeArray.push('	<td style="display:none">' + code + '</td>');
+				feeArray.push('	<td>' + modeName + '</td>');
+				feeArray.push('	<td>'+(modeCfg?modeCfg[code].NAME:'')+'</td>');
+				feeArray.push('	<td>'+fee+'</td>');
+				if(hasPriv){
+					feeArray.push('	<td class="edit"><span class="e_input"><span><input name="FEE_ITEM" type="text" idx="'+idx+'" type="text" value="'+pay+'" maxlength="10"/></span></span></td>');
+				}else{
+					feeArray.push('	<td>'+pay+'</td>');
+				}
+				feeArray.push('</tr>');
+			}
+			$("#FEE_INPUT_LIST").html(feeArray.join(""));
+			feeArray=null;
+			//绑定事件
+			$("#FEE_INPUT_LIST input").bind("focus",$.feeMgr.events.onFeeInputFocus);
+			$("#FEE_INPUT_LIST input").bind("blur",$.feeMgr.events.onFeeInputBlur);	
+			
+			$.feeMgr.updatePay();
+			//$.feeMgr.changePay();
+			$("#FEE_POPUP").css("display","");
+			
+			//触发业务侧的js方法
+			var afterChangeFeeActionTemp=this.afterChangeFeeAction; 
+			setTimeout(function(){
+				var feeListTemp = $.feeMgr.FEE_LIST;
+				var totalPay = $("#PAY_TOTAL").html();
+				var dataTemp = $.DataMap();
+				dataTemp.put("FEE_LIST", feeListTemp.toString());
+				dataTemp.put("PAY_TOTAL", totalPay);
+				if(afterChangeFeeActionTemp && afterChangeFeeActionTemp != ""){
+					(new Function("var data = arguments[0];"+ afterChangeFeeActionTemp + ";"))(dataTemp);
+				}
+			},200);
+		},
+		
+		//费用确认框
+		submitFee:function(btnState, func){
+			if(btnState){
+				//确定提交费用框
+				if(!$.feeMgr.setFeeSubmitParam())return;
+			}else{
+				//关闭费用确认框
+			}
+			//关闭费用弹出框
+			$("#FEE_POPUP").css("display","none");
+			//执行回调方法
+			if(func) func();
+		},
+		//更新支付方式及相关数据
+		updatePay:function(){
+			var totalPay = $.feeMgr.getTotalPayFee();
+			var total = totalPay/100;		//展示金额，转换为元为单位
+			/**var defaultPay=$.feeMgr.CASH_CODE;//默认支付方式
+			if(!$.feeMgr.FEE_PAY || !$.feeMgr.FEE_PAY.length){
+				//创建支付列表
+				$.feeMgr.FEE_PAY= $.DataMap();
+				//初始化新的支付数据
+				var payModes = $.feeMgr.FEE_CONFIG.PAY_MODES;
+				for(var i=0; i<payModes.length; i++){
+					$.feeMgr.FEE_PAY.put(payModes[i].DATA_ID, 0);		//初始化 各种支付方式 的初始化金额
+				}
+				$.feeMgr.FEE_PAY.put($.feeMgr.CASH_CODE, totalPay);   //默认按照现金方式支付
+			}else{
+				var flag = false;
+				//如果存在支付数据，则将总费用累加到原来支付方式
+				$.feeMgr.FEE_PAY.eachKey(function(key,index,totalcount){
+					if($.feeMgr.FEE_PAY.get(key)){
+						$.feeMgr.FEE_PAY.put(key, totalPay);
+						defaultPay = key;
+						flag = true;
+						return false;
+					}
+				});
+				if(!flag){
+					defaultPay = "0";
+					$.feeMgr.FEE_PAY.put(defaultPay, totalPay);
+				}
+			}
+			$.feeMgr.FEE_PAY.put("TOTAL",totalPay);	//总金额
+			*/
+			//更新支付方式金额数据/费用列表总费用		
+			$("#PAY_TOTAL,#FEE_TOTAL").html(total);
+			//更新支付方式
+			//$("#FEE_PAY_LIST").find("option[value="+defaultPay+"]").attr("seleted", true);
+		},
+		//改变支付的方式
+		changePay:function(){
+			var totalPay = $.feeMgr.getTotalPayFee();
+			var payMode=$("#FEE_PAY_LIST").val();
+			var payMoney=0;
+			//如果存在支付数据，则将总费用累加到原来支付方式
+			$.feeMgr.FEE_PAY.eachKey(function(key,index,totalcount){
+				//|| key=="CHECK_INFO"
+				if(key == "TOTAL") return true;
+				if(payMode == key){	//如果支付方式跟当前选定的相同，则将总支付金额全部转入该支付方式
+					payMoney=totalPay;
+				}else{
+					payMoney=0;
+				}
+				$.feeMgr.FEE_PAY.put(key, payMoney);
+			});
+			
+			if(payMode == '1'){//支票支付
+				$("#POSCRAD").css("display","none");
+				$("#CHECKCRAD").html($.feeMgr.buildCheckCardHtml());
+				$("#CHECKCRAD").css("display","");
+				$.feeMgr.loadSuperBankInfo();
+			}else if(payMode == '7'){//POS刷卡消费 海科融通支付
+				$("#CHECKCRAD").css("display","none");
+				$("#POSCRAD").html($.posTradeHFRT.buildPosHtml());
+				
+				$("#POSCRAD").css("display","");
+				
+				$("#POS_PAYMENT_BTN").unbind("click");
+				$("#POS_PAYMENT_BTN").bind("click", $.posTradeHFRT.posPayFee);
+				$("#POS_BACKPAY_BTN").unbind("click");
+				$("#POS_BACKPAY_BTN").bind("click", $.posTradeHFRT.posBackPayFee);
+				$.posTradeHFRT.getPosConfigHK();
+			}else{
+				$("#CHECKCRAD").css("display","none");
+				$("#POSCRAD").css("display","none");
+			}
+		},
+		/**
+		 * 创建费用支付确认弹出框
+		 */
+		buildFeePoppup:function(){
+			var popHtml=[];
+			popHtml.push('<div class="c_popup" id="FEE_POPUP" style="display:none;"><div class="c_popupWrapper"> ');
+			popHtml.push('<div class="c_popupHeight"></div> ');
+			popHtml.push('<div class="c_popupBox"> ');
+			popHtml.push('<div class="c_popupTitle"> ');
+			popHtml.push('<div class="text">付款列表</div> ');
+			popHtml.push('	<div class="fn"><a class="close" href="#nogo" id="FEEPOPUP_CLOSE_BTN"></a></div> ');
+			popHtml.push('</div> ');
+			popHtml.push('<div class="c_popupContent"><div class="c_popupContentWrapper"> ');
+			popHtml.push('<div class="c_table c_table-row-5"> ');
+			popHtml.push('<table><thead><tr> ');
+			popHtml.push('<th style="display:none">Code</th><th>类型</th><th>内容</th><th style="width:100px;">应缴</th><th style="width:100px;">实缴</th> ');
+			popHtml.push('</tr></thead> ');
+			popHtml.push('<tbody id="FEE_INPUT_LIST"> ');
+			/**<tr>
+					<td>预存</td>
+					<td>活动本金存入</td>
+					<td>6278.00</td>
+					<td class="edit"><span class="e_input"><span><input type="text" value="6000.00" /></span></span></td>
+				</tr>*/
+			popHtml.push('</tbody> ');
+			popHtml.push('</table> ');
+			popHtml.push('</div> ');
+
+			popHtml.push('<div class="c_form c_form-col-2 c_form-label-4"> ');
+			popHtml.push('<ul class="ul"> ');
+//			popHtml.push('<li class="li"><span class="label">付款方式：</span> ');
+//			popHtml.push('<span class="e_select"><span><span> ');
+//			popHtml.push('<select id="FEE_PAY_LIST"></select> ');
+//			popHtml.push('</span></span></span></li> ');
+			popHtml.push('<li class="li"></li><li class="li e_orange"> ');
+			popHtml.push('<span class="label">总额：</span><span class="text" id="PAY_TOTAL">999</span> ');
+			popHtml.push('</li></ul></div> ');
+			
+			//支票信息展示 begin CHECK_CARD_NO,CHECK_CARD_NAME,SUPER_BANK_LIST,CHECK_BANK_LIST,CHECK_LIMIT,CHECK_BANK_ACCT_NO,UNIT_NAME,CONTACT,CONTACT_PHONE
+			//popHtml.push('<div class="c_form c_form-col-2 c_form-label-5" id="CHECKCRAD" jwcid="CHECKCRAD@Part" style="display:none">');
+			//popHtml.push('</div>');
+			//支票信息展示 end
+			
+			//POS刷卡消费 begin 海科融通支付
+//			popHtml.push('<div class="c_form c_form-col-4 c_form-label-2" id="POSCRAD" style="display:none">');
+//			popHtml.push('</div>');
+			//POS刷卡消费 end 海科融通支付
+			
+			popHtml.push('<div class="c_submit"> ');
+			popHtml.push('<button class="e_button-page-ok" id="FEEPOPUP_SUBMIT_BTN"><i></i><span>确定</span></button> ');
+			popHtml.push('<button class="e_button-page-cancel" id="FEEPOPUP_CANCEL_BTN"><i></i><span>取消</span></button> ');
+			popHtml.push('</div></div></div> ');
+			popHtml.push('<div class="c_popupBottom"><div></div></div> ');
+			popHtml.push('<div class="c_popupShadow"></div> ');
+			popHtml.push('</div></div> ');
+			popHtml.push('<iframe class="c_popupFrame"></iframe> ');
+			popHtml.push('<div class="c_popupCover"></div> ');
+			popHtml.push('</div> ');
+			
+			$(document.body).append(popHtml.join(""));
+			
+			//生成费用支付列表
+//			if(!$.feeMgr.FEE_CONFIG.PAY_MODES){
+//				MessageBox.alert("告警提示", "费用支付方式配置数据加载异常！");
+//				return;
+//			}
+//			var payModeStr=[];
+//			var payModes=$.feeMgr.FEE_CONFIG.PAY_MODES;
+//			if($.posTradeHFRT.POS_CONFIGHK.get("POS_FLAG")){//只能使用海科融通这一种方式
+//				for(var i=0; i<payModes.length; i++){
+//					if(payModes[i].DATA_ID=="7"){
+//						payModeStr.push('<option value="'+payModes[i].DATA_ID+'" selected="selected">'+payModes[i].DATA_NAME+'</option>');
+//					}
+//				}
+//			}else{
+//				for(var i=0; i<payModes.length; i++){
+//					var isShowHKFlag = $.posTradeHFRT.POS_CONFIGHK.get("IS_SHOW_HKPOS_FLAG");
+//					if(payModes[i].DATA_ID=="7" && (!isShowHKFlag || (isShowHKFlag && isShowHKFlag!="true"))){
+//						continue;
+//					}
+//					if(payModes[i].DATA_ID==$.feeMgr.CASH_CODE){
+//						payModeStr.push('<option value="'+payModes[i].DATA_ID+'" selected="selected">'+payModes[i].DATA_NAME+'</option>');
+//					}else{
+//						payModeStr.push('<option value="'+payModes[i].DATA_ID+'">'+payModes[i].DATA_NAME+'</option>');
+//					}
+//				}
+//			}
+//			$("#FEE_PAY_LIST").html(payModeStr.join(""));
+//			$("#FEE_PAY_LIST").bind("change", $.feeMgr.changePay);
+//			popHtml=payModeStr=null;
+			popHtml=null;
+		},
+		//费用列表修改费用事件
+		chkInputFee:function(feeFieldObj){
+			//获取费用索引值
+			var idx=feeFieldObj.attr("idx");
+			if(!/^\d+$/.test(idx)) return;
+			
+			var oldFee = parseInt($.feeMgr.FEE_LIST.get(idx,"PAY"))/100;
+			var modFeeStr=$.trim(feeFieldObj.val());
+			if(!modFeeStr || modFeeStr=="")	modFeeStr="0";
+			
+			//校验数据格式,返回数值类型数据
+			var modFee=$.feeMgr.valid.verifyMoneyVal(modFeeStr);
+			if(false===modFee){
+				//校验不通过，恢复数据
+				feeFieldObj.val(oldFee);
+				return;
+			}
+			//校验业务逻辑
+			modFee=$.feeMgr.valid.verifyFeeVal(idx,modFee);
+			if(false===modFee){
+				//校验不通过，恢复数据
+				feeFieldObj.val(oldFee);
+				return;
+			}
+			//更新数据，并展示费用列表项金额
+			$.feeMgr.FEE_LIST.get(idx).put("PAY", Math.round(parseFloat(modFee)*100));
+			feeFieldObj.val(modFee);
+			//更新支付方式
+			$.feeMgr.updatePay();
+			
+			//开户卡费优惠特殊处理
+			var feeListTemp = $.feeMgr.FEE_LIST;
+			var totalPay = $("#PAY_TOTAL").html();
+			var dataTemp = $.DataMap();
+			dataTemp.put("FEE_LIST", feeListTemp.toString());
+			dataTemp.put("PAY_TOTAL", totalPay);
+			var afterChangeFeeAction=this.afterChangeFeeAction; 
+			if(afterChangeFeeAction && afterChangeFeeAction != ""){
+				(new Function("var data = arguments[0];"+ afterChangeFeeAction + ";"))(dataTemp);
+			}
+			
+//			$("#FEEPOPUP_SUBMIT_BTN").unbind("click");
+//			$("#FEEPOPUP_SUBMIT_BTN").bind("click", function(){ 
+//				$.feeMgr.submitFee(true,okFn);
+//			});
+		},
+		//统计总支付费用
+		getTotalPayFee:function(){
+			var totalFee = 0;
+			if($.feeMgr.FEE_LIST && $.feeMgr.FEE_LIST.length){
+				var pay,feeMode;
+				for(var i=0; i<$.feeMgr.FEE_LIST.length; i++){
+					var feeItem = $.feeMgr.FEE_LIST.get(i);
+					pay = feeItem.get("PAY");
+					feeMode = feeItem.get("MODE");
+					if(!$.isNumeric(pay)) pay = "0";
+					//四舍五入处理
+					var fee = parseFloat(pay)*100;
+					var modiFee = Math.round(fee)/100;
+					totalFee+= pay;
+					
+				}
+			}
+			return totalFee;
+		},
+//-----------------------------------------------支票支付 begin------------------------------------------------------------------------
+		//组装支票展示的界面html
+		buildCheckCardHtml:function(){
+			var popHtml = [];
+			//支票信息展示 begin CHECK_CARD_NO,CHECK_CARD_NAME,SUPER_BANK_LIST,CHECK_BANK_LIST,CHECK_LIMIT,CHECK_BANK_ACCT_NO,UNIT_NAME,CONTACT,CONTACT_PHONE
+			popHtml.push('<ul class="ul"><li class="li">');
+			popHtml.push('<span class="label"><span class="e_required">支票号码：</span></span>');
+			popHtml.push('<span class="e_input"><span>');
+			popHtml.push('<input type="text" jwcid="@Any"  id="CHECK_CARD_NO" name="CHECK_CARD_NO"  maxlength="50" nullable="no" desc="支票号码"/>');
+			popHtml.push('</span></span></li>');
+			popHtml.push('<li class="li"><span class="label"><span class="e_required">支票名称：</span></span><span class="e_input"><span>');	
+			popHtml.push('<input type="text" jwcid="@Any"  id="CHECK_CARD_NAME" name="CHECK_CARD_NAME" nullable="no" desc="支票名称"/></span></span></li>');
+			
+			popHtml.push('<li class="li"><span class="label"><span class="e_required">上级银行：</span></span>');
+			popHtml.push('<span class="e_select"><span><span> ');
+			popHtml.push('<select id="SUPER_BANK_LIST"></select>');
+			popHtml.push('</span></span></span></li> ');
+			
+			popHtml.push('<li class="li"><span class="label"><span class="e_required">开户银行：</span></span>');
+			popHtml.push('<span class="e_select"><span><span> ');
+			popHtml.push('<select id="CHECK_BANK_LIST"></select>');
+			popHtml.push('</span></span></span></li> ');
+			
+			popHtml.push('<li class="li"><span class="label"><span class="e_required">支票限额：</span></span>');
+			popHtml.push('<span class="e_input"><span><input type="text" jwcid="@Any"  maxlength="11" nullable="no" id="CHECK_LIMIT" name="CHECK_LIMIT" desc="支票限额"/>');
+			popHtml.push('<input jwcid="@Any" type="hidden" name="PAY_MODE_CHECK" id="PAY_MODE_CHECK"  value= "" /></span></span></li>');
+			popHtml.push('<li class="li"><span class="label">银行账号：</span><span class="e_input"><span>');
+			popHtml.push('<input type="text" jwcid="@Any"  id="CHECK_BANK_ACCT_NO" name="CHECK_BANK_ACCT_NO" maxlength="30" desc="银行账号"/></span></span></li>');
+			popHtml.push('<li class="li"><span class="label">单位名称：</span><span class="e_input"><span>');
+			popHtml.push('<input type="text" jwcid="@Any"  id="UNIT_NAME" name="UNIT_NAME" desc="单位名称"/></span></span></li>');
+			popHtml.push('<li class="li"><span class="label">联系人：</span><span class="e_input"><span>');
+			popHtml.push('<input type="text" jwcid="@Any"  id="CONTACT" name="CONTACT" maxlength="60" desc="联系人"/></span></span></li>');
+			popHtml.push('<li class="li"><span class="label">联系电话：</span><span class="e_input"><span>');
+			popHtml.push('<input type="text" jwcid="@Any"  id="CONTACT_LINK_PHONE" name="CONTACT_LINK_PHONE" datatype="numeric" desc="联系电话"/></span></span></li>');
+			popHtml.push('</ul>');
+			//支票信息展示 end
+			return popHtml.join("");
+		},	
+		
+		// SUPER_BANK_LIST 和 CHECK_BANK_LIST 下拉框数据的获取 liujian
+		loadSuperBankInfo:function(){
+			$.httphandler.get($.feeMgr.CLAZZ, "loadSuperBankConfig", null, 
+				function(jsonData){
+					if(jsonData.data && !$.isEmptyObject(jsonData.data)){
+						$.feeMgr.BANK_CONFIG=jsonData.data;
+						//支票配置信息
+						var payChecks=$.feeMgr.BANK_CONFIG.PAY_CHECK;
+						if(payChecks.length>0){
+							var payModeCheck = payChecks[0].DATA_ID;
+							if(!payModeCheck){
+								alert('未获取到支票编码，无法获取支票信息');
+								return;
+							}
+							$("#PAY_MODE_CHECK").val(payChecks[0].DATA_ID);
+						}else{
+							alert('未获取到支票编码，无法获取支票信息');
+							return;
+						}
+						var bankStr=[];
+						var superBanks=$.feeMgr.BANK_CONFIG.SUPER_BANK;
+						for(var i=0; i<superBanks.length; i++){
+							bankStr.push('<option value="'+superBanks[i].SUPER_BANK_CODE+'">'+superBanks[i].SUPER_BANK+'</option>');
+						}
+						$("#SUPER_BANK_LIST").html(bankStr.join(""));
+						$("#SUPER_BANK_LIST").bind("change", $.feeMgr.changeSuperBank);
+						superBanks=bankStr=null;
+					}
+				},
+				function(code, info, detail){
+					MessageBox.alert("错误提示","银行数据配置加载失败！",null, null, info, detail);
+				},{
+					dataType:"json",
+					simple:true,
+					async: false
+			});
+		},	
+		//根据上级银行查询下级银行的数据
+		changeSuperBank:function(){
+			var superBankCode = $("#SUPER_BANK_LIST").val();
+			// CHECK_BANK_LIST 用户开户行下拉框数据的获取 liujian
+			$.httphandler.get($.feeMgr.CLAZZ, "loadUserBankConfig", "&SUPER_BANK_CODE="+superBankCode, 
+				function(jsonData){
+					if(jsonData.data && !$.isEmptyObject(jsonData.data)){
+						$("#CHECK_BANK_LIST").html("");
+						var bankStr=[];
+						var checkBanks=jsonData.data.CHECK_BANK;
+						for(var i=0; i<checkBanks.length; i++){
+							bankStr.push('<option value="'+checkBanks[i].BANK_CODE+'">'+checkBanks[i].BANK+'</option>');
+						}
+						$("#CHECK_BANK_LIST").html(bankStr.join(""));
+						bankStr=checkBanks=null;
+					}
+				},
+				function(code, info, detail){
+					MessageBox.alert("错误提示","开户银行数据配置加载失败！",null, null, info, detail);
+				},{
+					dataType:"json",
+					simple:true,
+					async: false
+			});
+		},
+		//组装支票的提交参数
+		buildSubCheckCardParam:function(){
+			if(!$.validate.verifyAll("CHECKCRAD"))return false;
+			var superBankCode = $('#SUPER_BANK_LIST').val();
+			var userBankCode = $('#CHECK_BANK_LIST').val();
+			if(!superBankCode || superBankCode=='00'){
+				alert("上级银行不能为空!");
+				return false;
+			} 
+			if(!userBankCode){
+				alert("开户银行不能为空!");
+				return false;
+			}  
+			var checkCradInfo = $.DataMap();
+			//支票配置数据
+			checkCradInfo.put("PAY_MONEY_CODE", $("#PAY_MODE_CHECK").val());
+			//目前只支持一种支付方式,所以直接取总费用
+			checkCradInfo.put("MONEY", $.feeMgr.getTotalPayFee());
+			checkCradInfo.put("CHECK_CARD_NO", $('#CHECK_CARD_NO').val());
+			checkCradInfo.put("CHECK_CARD_NAME", $('#CHECK_CARD_NAME').val());
+			checkCradInfo.put("CHECK_BANK_CODE", userBankCode);
+			checkCradInfo.put("RSRV_STR2", userBankCode);
+			checkCradInfo.put("CHECK_LIMIT", $('#CHECK_LIMIT').val());
+			checkCradInfo.put("CHECK_TAG", "0"); 
+			checkCradInfo.put("CHECK_BANK_ACCT_NO", $('#CHECK_BANK_ACCT_NO').val()); 
+			checkCradInfo.put("CONTACT", $('#CONTACT').val());
+			checkCradInfo.put("CONTACT_PHONE", $('#CONTACT_LINK_PHONE').val()); 
+			$.cssubmit.setParam("CHECK_CRAD_INFO",checkCradInfo.toString());
+			return true;
+		},
+//-----------------------------------------------支票支付 end------------------------------------------------------------------------
+
+//------------------------------------------POS 海科融通支付公共参数配置 begin----------------------------------------------------------
+		//设置海科融通通用参数
+		setPosDataHK: function(key,value){
+			$.posTradeHFRT.setPosDataHK(key,value);
+		}, 
+		
+		//设置POS参数  用到auth组件的是auth组件自己set这个参数了，没有用到使用费用组件的需要自己设置
+		setPosParam: function(tradeTypeCode, serialNumber, eparchCode, userId){
+			$.posTradeHFRT.setPosParam(tradeTypeCode, serialNumber, eparchCode, userId);
+		},
+		
+//------------------------------------------POS 海科融通支付公共参数配置 end----------------------------------------------------------	
+		
+		//判断是否有修改费用权限
+		hasModFeePriv:function(tradeTypeCode, mode, code){
+			var hasPriv = false;
+			//特殊权限
+			var feeTypeCode;
+			if($.feeMgr.NO_MODIFY_FEETYPE && ($.feeMgr.NO_MODIFY_FEETYPE).length>0){
+				var feeModeArr = ($.feeMgr.NO_MODIFY_FEETYPE).keys;
+				for(var i=0;i<feeModeArr.length;i++){
+					var key = feeModeArr[i];
+					if(key == '*'){
+						return false;
+					}
+					feeTypeCode = ($.feeMgr.NO_MODIFY_FEETYPE).get(key);
+					if(key == mode && (feeTypeCode == '*' || feeTypeCode == code)){
+						return false;
+					}
+				}
+			}
+			
+			//营销活动费用修改权限 
+//			if(tradeTypeCode=="240" && $.feeMgr.FEE_CONFIG.SYSCHANGEACTIVEFEE){
+//				return true;
+//			}
+			//拥有 SYS002 权限
+			if ($.feeMgr.FEE_CONFIG.SUPER) {
+				return true;
+			}
+			/**
+			 * 宽带开户要单独获取权限
+			 * 613        FTTH宽带开户 
+			 * 630        校园宽带开户   
+			 * 600        GPON宽带开户
+			 * 612        ADSL宽带开户
+			 * 611        GPON宽带子账号开户
+			 */
+//			if ($.feeMgr.FEE_CONFIG.KD001 && (tradeTypeCode=="600" || tradeTypeCode=="611"
+//					|| tradeTypeCode=="612" || tradeTypeCode=="613" || tradeTypeCode=="630")) {
+//				return true;
+//			}
+			var modeCfg=$.feeMgr.FEE_CONFIG[mode];
+//			if(mode == "0" || mode == "1"){
+				hasPriv= modeCfg.PRIV || (modeCfg[code] && modeCfg[code].PRIV);
+//			}
+//			else if(mode == "2"){
+//				hasPriv= modeCfg.PRIV && code!="62" || (modeCfg[code] && modeCfg[code].PRIV);
+//			}
+			return hasPriv;
+		},valid:{
+			//校验费用数据
+			verifyMoneyVal:function(val){
+				/**
+				if(!/^[0-9]+(.[0-9]+)?$/.test(val)){
+					alert("金额输入不合法！");
+					return false;
+				}*/
+				if(!$.isNumeric(val)){
+					MessageBox.alert("告警提示","输入金额不合法！");
+					return false;
+				}
+				//java int有范围 2147483648
+				var maxVaue = parseInt(val*100);
+				if(maxVaue > 2147483648){
+					alert("金额输入过大,请重新输入!");
+					return false;
+				}
+				
+				//进行四舍五入处理
+				var fee = parseFloat(val)*100;
+				var modiFee = Math.round(fee)/100;
+				return modiFee;
+			},
+			//校验费用项业务逻辑
+			verifyFeeVal:function(idx,val){
+				var feeItem=$.feeMgr.FEE_LIST.get(idx);
+				var payFee= parseInt(feeItem.get(idx,"PAY"));
+				//如果没有发生变化，则返回
+				if(payFee==val*100){
+					return false;
+				}
+				//如果费用不存在，或数据异常则返回
+				if(!feeItem || !feeItem.length) return false; 
+				
+				//转换成元操作
+				var fee= parseInt(feeItem.get("FEE"))/100;		
+				
+				//只有FEE_MODE为0(营业费)时校验业务规则
+				if(val>fee && feeItem.get("MODE")=="0"){
+					MessageBox.alert("告警提示","营业费用不能超过应缴金额!");
+					return false;
+				}
+				//获取费用配置数据
+				var feeCfg=$.feeMgr.FEE_CONFIG["0"][feeItem.get("CODE")];
+				if(feeCfg){
+					var preMoney=parseInt(feeCfg.PREMONEY);
+					if("0"==feeCfg.PRE_TAG && (fee-val)>(preMoney/100)){
+						MessageBox.alert("告警提示","优惠金额过大！最多只能优惠金额[ " + (preMoney/100) + " ]元");
+						return false;
+					}else if("1"==feeCfg.PRE_TAG && ((fee-val)/fee)*100>preMoney){
+						MessageBox.alert("告警提示","优惠比例过大！最大优惠比例为[ " + preMoney + "% ]");
+						return false;
+					}
+				}
+				return val;
+			}
+		},events:{
+			onFeeInputFocus:function(){
+				$(this).select();
+			},
+			onFeeInputBlur:function(){
+				$.feeMgr.chkInputFee($(this));
+			}
+		}
+	}});
+	
+	$($.feeMgr.init);
+})(Wade);

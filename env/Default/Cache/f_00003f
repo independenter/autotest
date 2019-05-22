@@ -1,0 +1,1794 @@
+
+var gElems = $.DatasetList();
+var attrFees = $.DatasetList();
+if(typeof(SaleActiveModule)=="undefined"){
+	window["SaleActiveModule"]=function(){
+		
+	};
+	var saleactiveModule = new SaleActiveModule();
+}
+
+(function(){
+	$.extend(SaleActiveModule.prototype,{
+		readerComponent: function(packageId, productId, campnType, newImei,deviceModelCode,saleGoodsId){	
+			if($('#'+$('#SALEACTIVE_EPARCHY_CODE_COMPID').val()).val() == ''){
+				alert('请先输入号码');
+				return false;
+			}
+			var needCheck = $('#SALEACTIVE_NEED_CHECK').val();
+			saleactiveModule.clearSaleActive();
+			var userId = $('#SALEACTIVE_USER_ID').val();
+			var serialNumber = saleactive.getSerialNum();
+			var checkTag = $("#SALEACTIVE_NO_CHECK").val();
+			var queryMode = $("#SALEACTIVE_QUERY_MODE").val();
+			var activeType = $("#ACTIVE_TYPE").val();
+			var eparchyCode = $('#'+$('#SALEACTIVE_EPARCHY_CODE_COMPID').val()).val();
+			var param = '';
+			param += "&EPARCHY_CODE=" + eparchyCode;
+			param += '&USER_ID=' + userId;
+			param += '&SERIAL_NUMBER='+serialNumber;
+			param += '&NO_CHECK='+checkTag+'&QUERY_MODE='+queryMode+'&ACTIVE_TYPE='+activeType;
+			if(typeof(packageId) != "undefined") param += '&PACKAGE_ID='+packageId;
+			if(typeof(productId) != "undefined") param += '&PRODUCT_ID='+productId;
+			if(typeof(campnType) != "undefined") param += '&CAMPN_TYPE='+campnType;
+			if(typeof(newImei) != "undefined") param += '&NEW_IMEI='+newImei;
+			if(needCheck == "true"){
+				param += '&SPEC_TAG=checkByPackage';
+				$.beginPageLoading("规则校验中。。。");	
+				ajaxSubmit(null, null, param, $('#SALEACTIVEMODULE_COMPONENT_ID').val()+',saleElementAttr', 
+					function(data) {
+						$.endPageLoading();
+						var confirmSet = data.get("TIPS_TYPE_CHOICE");
+						var warnSet = data.get("TIPS_TYPE_TIP");
+						var errorSet = data.get("TIPS_TYPE_ERROR");
+						if(errorSet && errorSet.length>0)
+						{
+							var errStr = "";
+							for(var i=0; i<errorSet.length; i++){
+								var item = errorSet.get(i);
+								if(item.get("TIPS_INFO") != null && item.get("TIPS_INFO") != '')
+								{
+									if(i != errorSet.length)
+									{
+										errStr += (i+1)+":"+item.get("TIPS_INFO")+";<br/>";
+									}
+									else
+									{
+										errStr += (i+1)+":"+item.get("TIPS_INFO")+";";
+									}
+								}
+							}
+							MessageBox.alert("错误提示","业务规则报错!",'', null, errStr);
+							return false;
+						}
+						
+						//确认提示  tag==0 这个暂时去掉
+						if(confirmSet && confirmSet.length>0){
+							var item = confirmSet.get(0);
+							var content = item.get("TIPS_INFO");
+							MessageBox.confirm("确认提示", "业务规则提示！", 
+									function(btn){
+										if(btn == "ok"){
+											saleactiveModule.checkUserActiveBookDate(packageId, productId, campnType,deviceModelCode,newImei,eparchyCode,data,saleGoodsId);
+										}else{
+											return;
+										}
+								}, null, content);	
+							return;
+						}
+						
+						//告警提示  tag==0 这个暂时去掉
+						if(warnSet && warnSet.length>0){
+							$.tradeCheck.showAlert(warnSet, saleactiveModule.checkUserActiveBookDate(packageId, productId, campnType,deviceModelCode,newImei,eparchyCode,data,saleGoodsId));
+							return false;
+						}
+						saleactiveModule.checkUserActiveBookDate(packageId, productId, campnType,deviceModelCode,newImei,eparchyCode,data,saleGoodsId);
+					}, 
+					saleactiveModule.activeCheckFail);
+			}else{
+				saleactiveModule.drawSaleActive(packageId, productId, campnType, newImei,deviceModelCode,saleGoodsId);
+			}
+		},
+		readerComponentOnFusionWidenet: function(packageId, productId, campnType, newImei,deviceModelCode,saleGoodsId,fusionSpecTag,fusionProductId){	
+			if($('#'+$('#SALEACTIVE_EPARCHY_CODE_COMPID').val()).val() == ''){
+				alert('请先输入号码');
+				return false;
+			}
+			var needCheck = $('#SALEACTIVE_NEED_CHECK').val();
+			saleactiveModule.clearSaleActive();
+			var userId = $('#SALEACTIVE_USER_ID').val();
+			var serialNumber = saleactive.getSerialNum();
+			var checkTag = $("#SALEACTIVE_NO_CHECK").val();
+			var queryMode = $("#SALEACTIVE_QUERY_MODE").val();
+			var activeType = $("#ACTIVE_TYPE").val();
+			var eparchyCode = $('#'+$('#SALEACTIVE_EPARCHY_CODE_COMPID').val()).val();
+			var param = '';
+			param += "&EPARCHY_CODE=" + eparchyCode;
+			param += '&USER_ID=' + userId;
+			param += '&SERIAL_NUMBER='+serialNumber;
+			param += '&NO_CHECK='+checkTag+'&QUERY_MODE='+queryMode+'&ACTIVE_TYPE='+activeType;
+			if(typeof(packageId) != "undefined") param += '&PACKAGE_ID='+packageId;
+			if(typeof(productId) != "undefined") param += '&PRODUCT_ID='+productId;
+			if(typeof(campnType) != "undefined") param += '&CAMPN_TYPE='+campnType;
+			if(typeof(newImei) != "undefined") param += '&NEW_IMEI='+newImei;
+			
+			if(typeof(fusionSpecTag) != "undefined") param += '&FUSION_SPEC_TAG='+fusionSpecTag;
+			if(typeof(fusionProductId) != "undefined") param += '&FUSION_PRODUCT_ID='+fusionProductId;
+			
+			if(needCheck == "true"){
+				param += '&SPEC_TAG=checkByPackage';
+				$.beginPageLoading("规则校验中。。。");	
+				ajaxSubmit(null, null, param, $('#SALEACTIVEMODULE_COMPONENT_ID').val()+',saleElementAttr', 
+					function(data) {
+						$.endPageLoading();
+						var confirmSet = data.get("TIPS_TYPE_CHOICE");
+						var warnSet = data.get("TIPS_TYPE_TIP");
+						var errorSet = data.get("TIPS_TYPE_ERROR");
+						if(errorSet && errorSet.length>0)
+						{
+							var errStr = "";
+							for(var i=0; i<errorSet.length; i++){
+								var item = errorSet.get(i);
+								if(item.get("TIPS_INFO") != null && item.get("TIPS_INFO") != '')
+								{
+									if(i != errorSet.length)
+									{
+										errStr += (i+1)+":"+item.get("TIPS_INFO")+";<br/>";
+									}
+									else
+									{
+										errStr += (i+1)+":"+item.get("TIPS_INFO")+";";
+									}
+								}
+							}
+							MessageBox.alert("错误提示","业务规则报错!",'', null, errStr);
+							return false;
+						}
+						
+						//确认提示  tag==0 这个暂时去掉
+						if(confirmSet && confirmSet.length>0){
+							var item = confirmSet.get(0);
+							var content = item.get("TIPS_INFO");
+							
+							MessageBox.confirm("确认提示", "业务规则提示！", 
+									function(btn){
+										if(btn == "ok"){
+											
+											saleactiveModule.checkUserActiveBookDate(packageId, productId, campnType,deviceModelCode,newImei,eparchyCode,data,saleGoodsId);
+										}else{
+											return;
+										}
+								}, null, content);	
+							return;
+						}
+						
+						//告警提示  tag==0 这个暂时去掉
+						if(warnSet && warnSet.length>0){
+							$.tradeCheck.showAlert(warnSet, saleactiveModule.checkUserActiveBookDate(packageId, productId, campnType,deviceModelCode,newImei,eparchyCode,data,saleGoodsId));
+							return false;
+						}
+						saleactiveModule.checkUserActiveBookDate(packageId, productId, campnType,deviceModelCode,newImei,eparchyCode,data,saleGoodsId);
+					}, 
+					saleactiveModule.activeCheckFail);
+			}else{
+				saleactiveModule.drawSaleActive(packageId, productId, campnType, newImei,deviceModelCode,saleGoodsId);
+			}
+		},
+		/**校验用户当前订购的活动是否是预约 预约即新活动开始时间以当前已存在活动的结束时间为起点*/
+		checkUserActiveBookDate:function(packageId, productId,campnType,deviceModelCode,newImei,eparchyCode,data,saleGoodsId){
+			var param = "&USER_ID=" + data.get("USER_ID");
+		    param += "&SERIAL_NUMBER=" + saleactive.getSerialNum();
+		    param += "&PRODUCT_ID=" + productId;
+		    param += "&PACKAGE_ID=" + packageId;
+		    param += "&EPARCHY_CODE=" + eparchyCode;
+		    param += "&SPEC_TAG=CHECK_BOOK";
+		    var activeType = $("#ACTIVE_TYPE").val();
+			if(typeof(activeType) != "undefined") param += '&ACTIVE_TYPE='+activeType;
+		    param += "&SALEACTIVEMODULE_EPARCHY_CODE_COMPID=" + $('#SALEACTIVE_EPARCHY_CODE_COMPID').val();
+		    $.beginPageLoading("活动订购中。。。");
+		    ajaxSubmit(null, null, param, $('#SALEACTIVEMODULE_COMPONENT_ID').val(), 
+				     function(ajaxData){
+		    			$.endPageLoading();
+				     	var isBook = ajaxData.get("IS_BOOK");
+				     	var bookDate = ajaxData.get("BOOK_DATE");
+				     	var msg = "";
+				     	$('#IS_BOOK').val(isBook);
+				     	$('#SALEACTIVE_BOOK_DATE').val(bookDate);
+				     	if(isBook == '1'){
+				     		if(activeType == 'WD')
+				     		{
+				     			msg = "顺延办理提示：当前营销活动将顺延办理！顺延时间为:【" + bookDate + "】，是否继续办理？";
+				     		}
+				     		else
+				     		{
+				     			msg = "顺延办理提示：当前用户已存在有效的营销活动,此营销包只能顺延办理！顺延时间为:【" + bookDate + "】，是否继续办理？";
+				     		}
+				     		MessageBox.confirm("确认提示", '时间偏移提示', 
+							function(btn){
+								if(btn == "ok"){
+									saleactiveModule.drawSaleActive(packageId, productId, campnType, newImei,deviceModelCode,bookDate,saleGoodsId);
+								}
+							}, null, msg);
+				     	} else {
+				     		saleactiveModule.drawSaleActive(packageId, productId, campnType, newImei,deviceModelCode,bookDate,saleGoodsId);
+				     	}
+				     },
+				     function(error_code,error_info){
+				    	$.endPageLoading();
+		                alert(error_info);
+                     }
+                  );
+		},
+		drawSaleActive : function(packageId, productId, campnType, newImei,deviceModelCode,bookDate,saleGoodsId){
+			$.endPageLoading();
+			//增加终端类活动的输入限制
+			var checkTag = $("#GOODS_CHECK_TAG").val();
+			if(saleactive.isTeminalCampnType(campnType,productId))
+			{
+				if(newImei=='')
+				{
+					$('#imeiQuery').css('display', '');
+				    $('#saleStaffId').css('display', '');
+				    $('#viceImeiQuery').css('display', 'none');//add by liangqq 副imei
+				    alert("请输入终端串码查询可办理的营销包");
+				    return false;
+				}
+				else if(checkTag != '1')
+				{
+					alert("请校验终端后再点击营销包进行受理");
+					return false;
+				}
+			}
+			saleactive.openDetailPage();
+			var param = '';
+			errDataList.clear();
+			var userId = $('#SALEACTIVE_USER_ID').val();
+			param += "&EPARCHY_CODE=" + $('#'+$('#SALEACTIVE_EPARCHY_CODE_COMPID').val()).val();
+			param += "&SALEACTIVEMODULE_EPARCHY_CODE_COMPID=" + $('#SALEACTIVE_EPARCHY_CODE_COMPID').val();
+			param += "&USER_ID="+userId;
+			if(typeof(packageId) != "undefined") param += '&PACKAGE_ID='+packageId;
+			if(typeof(productId) != "undefined") param += '&PRODUCT_ID='+productId;
+			if(typeof(campnType) != "undefined") param += '&CAMPN_TYPE='+campnType;
+			if(typeof(newImei) != "undefined") param += '&NEW_IMEI='+newImei;
+			if(typeof(deviceModelCode) != "undefined") param += '&DEVICE_MODEL_CODE='+deviceModelCode;
+			if(typeof(saleGoodsId) != "undefined") param += '&GOODS_ID='+saleGoodsId;
+			var activeType = $("#ACTIVE_TYPE").val();
+			if(typeof(activeType) != "undefined") param += '&ACTIVE_TYPE='+activeType;
+			if(typeof(bookDate) != "undefined") param += '&BOOKDATE='+bookDate;
+			param += '&SERIAL_NUMBER=' + saleactive.getSerialNum();
+			$.beginPageLoading("营销活动展现中。。。");		
+			ajaxSubmit(null, null, param, $('#SALEACTIVEMODULE_COMPONENT_ID').val(), saleactiveModule.afterDrawSaleActive,
+			function(errorcode, errorinfo){
+				$.endPageLoading();
+				$.showErrorMessage('活动查询失败',errorinfo);
+			});
+		},
+		activeCheckFail: function(rscode, rsinfo){
+			$.endPageLoading();
+			$.showErrorMessage('活动校验不通过',rsinfo);
+		},
+		afterDrawSaleActive: function(ajaxDataset){
+			$.endPageLoading();
+			//提醒操作员是否需要修改活动开始时间
+			var enableStartDateTag = ajaxDataset.get('CHG_STARTDATE_TAG');
+			if(typeof(enableStartDateTag) != "undefined" && enableStartDateTag == '1')
+			{
+				
+				MessageBox.alert("业务提醒","当前营销活动允许修改活动开始时间!",'', null,null);
+			}
+			var componentId = $("#SALEACTIVEMODULE_COMPONENT_ID").val();
+			var saleGoodsData = ajaxDataset.get('GOODS_DATA');
+			if(typeof(saleGoodsData) != "undefined")
+			{
+				var goodsDetail = saleGoodsData.get('TERMINAL_DETAIL_INFO');
+				if(typeof(goodsDetail) != "undefined")$("#TERMINAL_DETAIL_INFO").val(goodsDetail);
+			}
+			//执行自定义的JS方法
+			var afterChoicePackageEvent = $('#AFTER_CHOICEPACKAGE_EVENT').val();
+			if(afterChoicePackageEvent != '')
+			{
+				try{
+					new Function(afterChoicePackageEvent+"();")();
+				}catch(e){
+					alert('自定义JS方法' + afterChoicePackageEvent + '执行出错！');
+					return;
+				}
+			}
+		},
+		clearSaleActive: function() {
+			var componentId = $("#SALEACTIVEMODULE_COMPONENT_ID").val();
+			$('#'+componentId+'_PART').html('');
+			//TODO  现在业务类型合并了，如果界面不合并，那么根据业务类型删除费用时就会有问题！
+			$.feeMgr.clearFeeList("240");
+			var gElems = $.DatasetList();
+		},
+		/**
+		 * 提交时获取营销活动相关的数据
+		 */
+		getSaleActiveSubmitData: function(){
+			var saleactiveData = new Wade.DataMap();
+			saleactiveData.put("GIFT_FEE_STR", $('#GIFT_FEE_STR').val());
+			saleactiveData.put('REMARK',$('#REMARK').val());
+			saleactiveData.put("PRODUCT_ID", $("#SALEACTIVE_PRODUCT_ID").val());
+			saleactiveData.put("PACKAGE_ID", $("#SALEACTIVE_PACKAGE_ID").val());
+			saleactiveData.put("SALEGOODS_IMEI", $("#DEVICE_MODEL_RES_ID").val());
+			saleactiveData.put("VICE_IMEI_NO", $("#VICE_IMEI_NO").val());//add by liangqq 副imei
+			if(typeof($("#SALE_STAFF_ID").val()) != "undefined") saleactiveData.put("SALE_STAFF_ID", $("#SALE_STAFF_ID").val());
+			if(typeof($("#ACTOR_NAME").val()) != "undefined") saleactiveData.put("ACTOR_NAME", $("#ACTOR_NAME").val());
+			saleactiveData.put("CAMPN_TYPE", $("#SALEACTIVE_CAMPN_TYPE").val());
+			saleactiveData.put("START_DATE", $("#SALEACTIVE_START_DATE").val());
+			saleactiveData.put("END_DATE", $("#SALEACTIVE_END_DATE").val());
+			saleactiveData.put("BOOK_DATE", $("#SALEACTIVE_BOOK_DATE").val());
+			var changeEndOffset = $("#CHANGED_END_OFFSET").val();
+			var checkTag = $("#SALEACTIVE_NO_CHECK").val();
+			var queryMode = $("#SALEACTIVE_QUERY_MODE").val();
+			var activeType = $("#ACTIVE_TYPE").val();
+			
+			/**
+			 * add begin by luows	20170407
+			 * [2017]0716关于按照集团要求规范有价卡赠送管理功能需求
+			 */
+			saleactiveData.put("GIFT_REASON", $('#GIFT_REASON').val());
+			saleactiveData.put("GIFT_NUM", $('#GIFT_NUM').val());
+			//add end
+			
+			if(typeof(changeEndOffset) != "undefined") saleactiveData.put("CHANGED_END_OFFSET", changeEndOffset);
+			var changeStartDate = $("#CHANGED_STATE_DATE").val();
+			if(typeof(changeStartDate) != "undefined") 
+			{
+				//计算元素时间需要，元素的开始时间和活动的开始时间必须是一致的，结束时间元素可以和活动的不一样，各自按照自己的偏移量进行计算
+				if(activeType == 'JX')
+				{
+					saleactiveData.put("CHANGED_STATE_DATE", $("#SALEACTIVE_START_DATE").val());
+				}
+				else
+				{
+					saleactiveData.put("CHANGED_STATE_DATE", changeStartDate);
+				}
+			}
+			var monthSum = $("#MONTH_SUM").val();
+			if(typeof(monthSum) != "undefined") saleactiveData.put("MONTH_SUM", $("#MONTH_SUM").val());
+			var outNetPhone = $("#OUT_NET_PHONE").val();
+			if(typeof(outNetPhone) != "undefined") {
+				saleactiveData.put("PHONE_SOURCE", $("#PHONE_SOURCE").val());
+				saleactiveData.put("OUT_NET_PHONE", $("#OUT_NET_PHONE").val());
+			}
+			var saleType = $("#SALE_TYPE").val();
+			if(typeof(saleType) != "undefined") saleactiveData.put("SALE_TYPE", $("#SALE_TYPE").val());
+			var sepcNum = $("#SEPC_NUM").val();
+			if(typeof(sepcNum) != "undefined") saleactiveData.put("SEPC_NUM", $("#SEPC_NUM").val());
+			var priceCardTag = $("#PRICECARD_TAG").val();
+			if(priceCardTag == 'true') saleactiveData.put("X_CODING_STR",$.table.get('eleCardTable').getTableData());
+			var terminaStr = $("#TERMINAL_DETAIL_INFO").val();
+			if(typeof(terminaStr) != "undefined" && terminaStr.length > 0)
+			{
+				var terminalData=$.DataMap($("#TERMINAL_DETAIL_INFO").val());
+				saleactiveData.put("TERMINAL_INFO",terminalData);
+			}
+			saleactiveData.put("NO_CHECK",checkTag);
+			saleactiveData.put("QUERY_MODE",queryMode);
+			saleactiveData.put("ACTIVE_TYPE",activeType);
+			if($("#SMS_FLAG").attr("checked")){
+				saleactiveData.put("SMS_FLAG","1");
+			} else {
+			   saleactiveData.put("SMS_FLAG","0");
+			}
+			if(gElems.length > 0){
+				saleactiveData.put("SELECTED_ELEMENTS", gElems);
+			}
+			if(saleactiveModule.spGetGoods().length > 0)
+			{
+				saleactiveData.put("GOODS_LIST",saleactiveModule.spGetGoods());
+			}
+			return saleactiveData;
+		},
+		checkMinElementLimit:function(limitType, minElem){
+		    if(minElem!=-1){
+			   var elemNum = 0;
+			   if(limitType == ''){
+			      elemNum = gElems.length;
+			      if(elemNum < minElem) {
+				     alert('所有元素最小选择数为：' + minElem + '！所有当前元素选择数为：' + elemNum);
+				     return false;
+			      }
+				  return true;
+			   }else if(limitType == 'D'){
+			      for(var i = 0; i < gElems.length; i++){
+				     var elem = gElems.get(i);
+				     if(elem.get('ELEMENT_TYPE_CODE') == 'D'){
+					   elemNum++;
+				     }
+			      }	
+			      if(elemNum < minElem){
+				     alert('优惠元素最小选择数为：' + minElem + '！优惠当前元素选择数为：' + elemNum);
+				     return false;
+			      }
+				  return true;
+			   }else if(limitType == 'S'){
+			      for(var i = 0; i < gElems.length; i++){
+				     var elem = gElems.get(i);
+				     if(elem.get('ELEMENT_TYPE_CODE') == 'S'){
+					    elemNum++;
+				     }
+			      }
+			      if(elemNum < minElem) {
+				     alert('服务元素最小选择数为：' + minElem + '！服务当前元素选择数为：' + elemNum);
+				     return false;
+			      } 
+				  return true;
+			   }
+			   return true;
+			}
+			return true;
+		},
+		checkMaxElementLimit:function(limitType, maxElem){
+		    if(maxElem != -1){
+		       var elemNum = 0;
+		       if(limitType == ''){	
+			      elemNum = gElems.length;
+			      if(elemNum > maxElem) {
+				     alert('所有元素最大选择数为：' + maxElem + '！所有当前元素选择数为：' + elemNum);
+				     return false;
+			      }
+			      return true;
+		       }else if(limitType == 'D'){
+				   for(var i = 0; i < gElems.length; i++){
+					  var elem = gElems.get(i);
+					  if(elem.get('ELEMENT_TYPE_CODE') == 'D'){
+						 elemNum++;
+					  }
+				   }		
+				   if(elemNum > maxElem){
+					  alert('优惠元素最大选择数为：' + maxElem + '！当前优惠元素选择数为：' + elemNum);
+					  return false;
+				   }
+				   return true;
+			    }else if(limitType == 'S'){
+				   for(var i = 0; i < gElems.length; i++){
+					 var elem = gElems.get(i);
+					 if(elem.get('ELEMENT_TYPE_CODE') == 'S'){
+						elemNum++;
+					 }
+				   }
+				   if(elemNum > maxElem) {
+					  alert('服务元素最大选择数为：' + maxElem + '！当前服务元素选择数为：' + elemNum);
+					  return false;
+				   }
+				   return true;
+			    }
+			    return true;
+			}
+		    return true;
+		},
+		elemLimitNumberCheck:function(){
+		   var limitType = $("#SALEACTIVE_PGK_LIMIT_TYPE").val();
+		   var minElem = parseInt($("#SALEACTIVE_PGK_ELEMENT_MIN").val());
+		   var maxElem = parseInt($("#SALEACTIVE_PGK_ELEMENT_MAX").val());
+		   if(!saleactiveModule.checkMinElementLimit(limitType, minElem)) return false;
+		   if(!saleactiveModule.checkMaxElementLimit(limitType, maxElem)) return false;
+		   return true;
+		},
+		/**
+		 * 提交时的营销活动JS规则校验
+		 */
+		saleactiveSubmitJSCheck: function(){
+			if($("#SALEACTIVE_PACKAGE_ID").length == 0 || $("#SALEACTIVE_PACKAGE_ID").val() == ''){
+				alert('请先选择一个活动');
+				return false;
+			}
+			var campnType = $("#SALEACTIVE_CAMPN_TYPE").val();
+			if(campnType == 'YJK1')
+			{
+				
+				/**
+				 * add begin by luows	20170407
+				 * [2017]0716关于按照集团要求规范有价卡赠送管理功能需求
+				 */
+				if ("JY" == $("#ACTIVE_TYPE").val() || "CM" == $("#ACTIVE_TYPE").val()) {
+					var giftReason = $('#GIFT_REASON').val();
+					var giftnum = $('#GIFT_NUM').val();
+					if ('' == giftReason) {
+						alert('您选择了“有价卡营销”活动类型，必须输入赠送依据，限制长度200字符！');
+		          	    return false;
+					}
+					if ('' == giftnum) {
+						alert('您选择了“有价卡营销”活动类型，必须输入赠送文号，限制长度100字符！');
+		          	    return false;
+					}
+				}
+				//add end
+				
+				
+				var valueCardList = $.table.get('eleCardTable').getTableData();
+				var valueCardCheckTag = $('#VALUECARD_CHECKTAG').val();
+	             if(valueCardCheckTag != "1")
+	             {
+	            	 var priceCardTag = $("#PRICECARD_TAG").val();
+	            	 if(priceCardTag == 'true') 
+	            	 {
+	            		if(valueCardList.length > 0)
+	            		{
+	            			return true;
+	            		}
+	            		else
+	            		{
+	            			alert('当前有价卡校验未通过，请重新校验');
+	    	          	    return false;
+	            		}
+	            	 }
+	            	 else
+	            	 {
+	            		  alert('当前有价卡校验未通过，请重新校验');
+	 	          	      return false;
+	            	 }
+	          	    
+	             }
+	             if(valueCardList.length <= 0)
+	             {
+	            	 alert('无有效有价卡，请重新校验');
+	          	     return false;
+	             }
+			}
+			if(!saleactiveModule.elemLimitNumberCheck()) return false;
+			
+			var goods = saleactiveModule.spGetGoods();
+			if (goods.length>0) {
+				for(var i=0;i<goods.length;i++){
+					var good = goods.get(i);
+					if (good.get("HAS_CHECKED") != "TRUE") {
+						alert("请先校验资源!");
+						return false;
+					}else if (good.get("RES_CODE") == "-1") {
+						alert("资源数据丢失,请重新输入检验!");
+						good.put("HAS_CHECKED","FALSE") // 设置实物为未校验状态
+						var elemKey = good.get("ELEM_KEY");
+						var elemKeys = elemKey.split("_");
+						var ResTextId=$(elemKeys[0]+"_"+elemKeys[1]+"_RES_CODE");
+						ResTextId.attr('disabled', false);
+						return false;
+					}
+				}
+			}
+		    return true;
+		},
+		showAttr: function(eventObj){
+			var obj = $(eventObj);
+			var element = saleactiveModule.spGetElem(obj.attr("checkboxId"));
+			if(element == null) 
+			{
+				return;
+			}
+			var params = "&ELEMENT_ID="+obj.attr("elementId")+"&ELEMENT_TYPE_CODE="+obj.attr("elementTypeCode")+"&ITEM_INDEX="+obj.attr("checkboxId");
+			var eparchyCode = $('#'+$('#SALEACTIVE_EPARCHY_CODE_COMPID').val()).val();
+			params += '&EPARCHY_CODE='+eparchyCode+'&TRADE_TYPE_CODE=240&PACKAGE_ID='+$("#SALEACTIVE_PACKAGE_ID").val();
+			if(typeof(obj.attr("depositType")) != "undefined") params+='&DEPOSIT_TYPE='+obj.attr("depositType");
+			if(typeof(obj.attr("depositRelId")) != "undefined")params+='&DEPOSIT_REL_ID='+obj.attr("depositRelId");
+			if(typeof($('#IS_DISABLED_TAG').val()) != "undefined") params+='&IS_DISABLED_TAG='+$('#IS_DISABLED_TAG').val();
+			if(typeof(obj.attr("assignMode")) != "undefined") params+='&ASSIGN_MODE='+obj.attr("assignMode");
+			if(typeof(obj.attr("customTag")) != "undefined") params+='&CUSTOM_TAG='+obj.attr("customTag");
+			if(typeof(obj.attr("depositEnableMode")) != "undefined")params+='&DEPOSIT_ENABLE_MODE='+obj.attr("depositEnableMode");
+			if(typeof($('#SALE_END_OFFSET').val()) != "undefined") params+='&SALE_END_OFFSET='+$('#SALE_END_OFFSET').val();
+			$.ajax.submit(null,null,params,'saleElementAttr',saleactiveModule.afterShowAttr);
+			
+		},
+		afterShowAttr: function(){
+			//设置回填值
+			$("#saleFeeItemPanel").css("display","");
+		},
+		hideAttr: function(){
+			$("#saleFeeItemPanel").css("display","none");
+		},
+		addFeeByAttr:function(fee, fee_mode, fee_type_code, pay_fact_fee, element_id,elem_type,pay_mode){
+			var param = $.DataMap();
+			var flag = true;
+			param.put("FEE", fee);
+			param.put("FEE_MODE", fee_mode);
+			param.put("FEE_TYPE_CODE", fee_type_code);
+			param.put("PAY_FACT_FEE", pay_fact_fee);
+			param.put("ELEMENT_ID", element_id);
+			param.put("ELEMENT_TYPE_CODE", elem_type);
+			param.put("PAY_MODE",pay_mode);
+			
+			var feeList = $.DatasetList();
+			var feeData = param;
+			feeList.add(feeData);
+			param.put('FEE_LIST',feeList);
+			for(var i = 0; i < attrFees.length; i++) {
+				var attrFee = attrFees.get(i);
+				if(attrFee.get("FEE", "") != '' 
+					&& attrFee.get("FEE_MODE", "") == fee_mode 
+					&& attrFee.get("FEE_TYPE_CODE", "") == fee_type_code
+					&& attrFee.get("ELEMENT_ID", "") == element_id) {
+					//先减去原来这个元素的这个类型的费用
+					saleactiveModule.spDelFeeItem(attrFee);
+					//用新费用覆盖旧费用
+					attrFee.put("FEE", fee);
+					//增加新费用
+					saleactiveModule.spAddFeeItem(param);
+					//不往列表里加新的元素费用
+					flag = false;
+					break;
+				}
+			}
+			if(flag) {
+				//往列表里加新的元素费用
+				attrFees.add(param);
+				saleactiveModule.spAddFeeItem(param);
+			}
+		},
+		/*活动属性处理结束*/
+		showDateChoice: function(eventObj){
+			var obj = $(eventObj);
+			
+			var params = "&ITEM_INDEX="+obj.attr("checkboxId");
+			var elem = this.spGetElem(obj.attr("checkboxId"));
+			if(elem == null)
+			{
+				alert('该元素还没有被选上');
+				return;
+			}
+			var editMode = obj.attr('editMode');
+			if(editMode == '1')
+			{
+				var checkObj = $('#'+obj.attr('checkboxId'));
+				var nowDay = checkObj.attr('nowDay');
+				var nextAcctDay = checkObj.attr('nextAcctDay');
+				params += '&NOW_DAY=' + nowDay;
+				params += '&NEXT_ACCT_DAY=' + nextAcctDay;
+			}
+			else if(editMode == '2')
+			{
+				params += '&END_DATE=' + elem.get('END_DATE');
+			}
+			params += '&EDIT_MODE=' + editMode;
+			
+			$.ajax.submit(null,null,params,'saleElementDate',function(){saleactiveModule.afterShowDateChoice(eventObj)});
+		},
+		afterShowDateChoice: function(eventObj){
+			var obj = $(eventObj);
+			var topAdd = 0;
+			var scroll =  $("div[class=m_wrapper]:first");
+			if(scroll.length>0){
+				topAdd = scroll.attr("scrollTop");
+			}
+			var o = $(eventObj).offset();
+			$("#elementDatePanel").css("top", (o.top+obj.height()+topAdd) + "px");
+			$("#elementDatePanel").css("left", (o.left+obj.width()-$("#elementDatePanel").width()) + "px");
+			$("#elementDatePanel").css("display","");
+		},
+		confirmDateChoice: function(itemIndex){
+			var choiceInfo = elementDateChoice.getChoiceInfo();
+			var element = saleactiveModule.spGetElem(itemIndex);
+			
+			if(choiceInfo.get('START_DATE') != '')
+			{
+				var startDate = choiceInfo.get('START_DATE');
+				element.put("START_DATE", startDate);
+				$('#'+itemIndex+'_START_DATE').html(startDate);
+			}
+			if(choiceInfo.get('END_DATE') != '')
+			{
+				var endDate = choiceInfo.get('END_DATE');
+				if(choiceInfo.get('END_DATE').length == 10)
+				{
+					endDate += ' 23:59:59';
+				}
+				element.put("END_DATE", endDate);
+				$('#'+itemIndex+'_END_DATE').html(endDate);
+			}
+			
+			$("#elementDatePanel").css("display","none");
+		},
+		disabledDepositPlusItem: function(cbid, flag) {
+			var checkboxObj = $("#"+cbid);
+			var giftUseTag = checkboxObj.attr('gift_use_tag');
+			var depositType = checkboxObj.attr('deposit_type');
+			if(depositType == '2')
+			{
+				var index = checkboxObj.attr('index');
+				var plusId = "DEPOSIT_" + index + "_FEE";
+				if(plusId != null && plusId != '') {
+					if($("#"+plusId).length > 0) {
+						$("#"+plusId).attr('disabled', flag);
+					}
+				}
+			}
+			if(giftUseTag == '1')
+			{
+				var index = checkboxObj.attr('index');
+				var plusId = "DEPOSIT_" + index + "_DEPOSIT_USER_ID";
+				if(plusId != null && plusId != '') {
+					if($("#"+plusId).length > 0) {
+						$("#"+plusId).attr('disabled', flag);
+					}
+				}
+			}
+		},
+		/**
+		 * 包展现时字段拼装已选上的元素
+		 */
+		spAutoAddCheckedElems: function(){
+			gElems = $.DatasetList();
+			debugger;
+			$('#detailTitleName').text($('#SALEACTIVE_PACKAGE_NAME').val());
+		
+			// 优惠
+			$("#SaleDiscntTable input[type=checkbox]").each(function()
+			{
+				if($.attr(this, "checked"))
+				{
+					saleactiveModule.spCheckBoxOnclickAction($.attr(this, "id"));
+				}
+			});
+			// 服务
+			$("#SaleServiceTable input[type=checkbox]").each(function()
+			{
+				if($.attr(this, "checked"))
+				{
+					saleactiveModule.spCheckBoxOnclickAction($.attr(this, "id"));
+				}
+			});
+			//预存赠送
+			$("#SaleDepositTable input[type=checkbox]").each(function()
+			{
+				if($.attr(this, "checked"))
+				{
+					saleactiveModule.spCheckBoxOnclickAction($.attr(this, "id"));
+				}
+			});
+			//积分
+			$("#SaleScoreTable input[type=checkbox]").each(function()
+			{
+				if($.attr(this, "checked"))
+				{
+					saleactiveModule.spCheckBoxOnclickAction($.attr(this, "id"));
+				}
+			});
+			//信用度
+			$("#SaleCreditTable input[type=checkbox]").each(function()
+			{
+				if($.attr(this, "checked"))
+				{
+					saleactiveModule.spCheckBoxOnclickAction($.attr(this, "id"));
+				}
+			});
+			//平台业务
+			$("#SalePlatSvcTable input[type=checkbox]").each(function()
+			{
+				if($.attr(this, "checked"))
+				{
+					saleactiveModule.spCheckBoxOnclickAction($.attr(this, "id"));
+				}
+			});
+			// 实物
+			$("#SaleGoodsTable input[type=checkbox]").each(function()
+			{
+			    debugger;
+				saleactiveModule.spCheckBoxOnclickAction($.attr(this, "id"));
+			});
+			
+			$("#SaleCombineTable input[type=checkbox]").each(function()
+			{
+				saleactiveModule.spCheckBoxOnclickAction($.attr(this, "id"));
+			});
+		},
+		spCheckBoxOnclickAction: function(cbId){
+			var cb = $("#"+cbId);
+			if (cb.attr("checked")) {
+				saleactiveModule.spDecodeElem(cbId);
+			} else {
+				saleactiveModule.hideAttr();
+				saleactiveModule.spDelElemById(cbId);
+			}
+		},
+		/*拼装元素串*/
+		spDecodeElem: function(cbId) {
+			var param = new Wade.DataMap();
+			var cb = $("#"+cbId);
+			saleactiveModule.spDecodePubParam(param, cb);
+			
+			var elemType = cb.attr("element_type_code");
+		
+			if (elemType == 'S') {
+				saleactiveModule.spDecodeServiceParam(param, cb);
+			} else if (elemType == 'D') {
+				saleactiveModule.spDecodeDiscntParam(param, cb);
+			} else if (elemType == 'R') {
+				//暂不支持
+			} else if (elemType == 'Z') {
+				saleactiveModule.spDecodePlatsvcParam(param, cb);
+			} else if (elemType == 'A') {
+				saleactiveModule.spDecodeDepositParam(param, cb);
+			} else if (elemType == 'G') {
+			    debugger;
+				saleactiveModule.spDecodeGoodsParam(param,cb);
+			} else if (elemType == 'J') {
+				saleactiveModule.spDecodeScoreParam(param, cb);
+			} else if (elemType == 'C') {
+				saleactiveModule.spDecodeCreditParam(param, cb);
+			} 
+		},
+		
+		/** 拼各类元素共有的参数 */
+ 		spDecodePubParam: function(param, elem) {
+			
+			param.put("ELEM_KEY", elem.attr("id"));
+			param.put("ELEMENT_ID", elem.attr("element_id"));
+			param.put("ELEMENT_TYPE_CODE", elem.attr("element_type_code"));
+			param.put("MODIFY_TAG", "0");
+			var elemName = elem.attr("element_name");
+			//判断是否有属性 信息，如果有属性则必须填写
+			var isEdit = elem.attr("isEdit");
+			var errMsg = elemName+'属性填写不完整，请重新填写';
+			if(typeof(isEdit) != 'undefined' && isEdit != '')
+			{
+				if(isEdit == 'true')
+				{
+					salefeeitem.spAddErrMsg('1022',errMsg,elem.attr("id"));
+				}
+			}
+			
+			var feeStr = $('#'+elem.attr("id")+'_FEE_LIST').val();
+			if(typeof(feeStr) != 'undefined' && feeStr != '')
+			{
+				var feeList = $.DatasetList(feeStr);
+				for(var index=0; index<feeList.length; index++)
+				{
+					var feeData = feeList.get(index);
+					var fee = feeData.get('FEE');
+					var isEdit = feeData.get('IS_EDIT');
+					if(typeof(isEdit) != 'undefined' && isEdit != '' && isEdit == '1')
+					{
+						feeList.remove(index);
+					}
+				}
+			}
+			param.put("FEE_LIST",feeList);
+			
+		},
+		
+		
+		
+		/*通过checkId删除一个元素*/
+		spDelElemById: function(cbId) {
+			var cb = $('#'+cbId);
+			gElems.each(function(item, index, totalcount) {
+				if (item.get("ELEM_KEY") == cb.attr("id")) {
+					gElems.removeAt(index);
+					saleactiveModule.spDelFeeItem(item);
+					if(item.get('ELEMENT_TYPE_CODE') == 'A')
+					{
+						saleactiveModule.disabledDepositPlusItem(item.get("ELEM_KEY"), true);
+					}
+				}
+			});
+		},
+		/*服务拼串*/
+		spDecodeServiceParam: function(param, elem) {
+			param.put("START_DATE", elem.attr("start_date"));
+			param.put("END_DATE", elem.attr("end_date"));
+			saleactiveModule.decodeAttrParam(param, elem)
+			saleactiveModule.spAddElem(param);
+		},
+		/*优惠拼串*/
+		spDecodeDiscntParam: function(param, elem) {
+			param.put("START_DATE", elem.attr("start_date"));
+			param.put("END_DATE", elem.attr("end_date"));
+			saleactiveModule.decodeAttrParam(param, elem)
+			saleactiveModule.spAddElem(param);
+		},
+		/*A元素拼串*/
+		spDecodeDepositParam: function(param, elem) {
+			param.put("START_DATE", elem.attr("start_date"));
+			param.put("END_DATE", elem.attr("end_date"));
+			param.put("SERIAL_NUMBER_B", elem.attr('serial_number_b'));
+			param.put("GIFT_USER_ID", elem.attr('user_id_a'));		
+			saleactiveModule.decodeAttrParam(param, elem);
+			saleactiveModule.spAddElem(param);
+			saleactiveModule.spAddFeeItem(param);
+		
+			saleactiveModule.disabledDepositPlusItem(param.get('ELEM_KEY'), false);
+		},
+		/*平台业务拼串*/
+		spDecodePlatsvcParam: function(param, elem) {
+			param.put("ELEMENT_ID", elem.attr('element_id'));
+			saleactiveModule.spAddElem(param);
+		},
+		
+		/*实物拼串*/
+		spDecodeGoodsParam: function(param,elem) {
+			var id = elem.attr("id");
+			param.put("HAS_CHECKED",elem.attr("has_check"));
+			saleactiveModule.decodeAttrParam(param, elem);
+			saleactiveModule.spAddElem(param);
+			saleactiveModule.spAddFeeItem(param);
+		},
+		
+		/**构建积分数据 */
+ 		spDecodeScoreParam: function(param, elem) {
+			param.put("SCORE_VALUE", elem.attr('score_value'));
+			saleactiveModule.spAddElem(param);
+			saleactiveModule.spAddFeeItem(param);
+			saleactiveModule.decodeAttrParam(param, elem)
+		},
+		/**构建信用度数据 */
+		spDecodeCreditParam: function(param, elem) {
+			param.put("CREDIT_VALUE", elem.attr('credit_value'));
+			param.put("CREDIT_GIFT_MONTHS", elem.attr('credit_gift_months'));
+			param.put("START_DATE", elem.attr("start_date"));
+			param.put("END_DATE", elem.attr("end_date"));
+			saleactiveModule.spAddElem(param);
+			saleactiveModule.spAddFeeItem(param);
+			saleactiveModule.decodeAttrParam(param, elem)
+		},
+		
+		spDecodeCombineParam: function(param, elem){
+			saleactiveModule.spAddElem(param);
+			saleactiveModule.spAddFeeItem(param);
+		},
+		/*添加元素费用*/
+		
+		spAddFeeItem: function(param) {
+			var feeList = param.get('FEE_LIST');
+			var elemId = param.get('ELEMENT_ID');
+			var elemType = param.get("ELEMENT_TYPE_CODE", "");
+			if(typeof(feeList) != 'undefined')
+			{
+				for(var index=0; index<feeList.length; index++)
+				{
+					var feeData = feeList.get(index);
+					var fee = feeData.get("FEE", ""); 
+					var feeMode = feeData.get("FEE_MODE", ""); 
+					var feeTypeCode = feeData.get("FEE_TYPE_CODE", ""); 
+					var payMode = feeData.get("PAY_MODE", "");
+					if (fee == "" || feeMode == "" || feeTypeCode == "" || fee == '0') {
+						continue;
+					}
+					if (payMode == "1") {
+						continue; 
+					}
+					
+					//A元素的ELEMENT_ID需要记录到表里，后续要根据ELEMENT_ID找到ACTION_CODE(A_DISCNT_CODE)传到账务
+					if(elemType == 'A')
+					{
+						saleactiveModule.insertFee("240", feeMode, feeTypeCode, fee, elemId);
+					}
+					else
+					{
+						saleactiveModule.insertFee("240", feeMode, feeTypeCode, fee);
+					}
+				}
+			}
+			
+		},
+		/*构建元素的属性值*/
+		decodeAttrParam: function(param, elem) {
+			var attrInitParam = $("#"+$(elem).attr("id")+'_ATTR').val();
+			if(typeof(attrInitParam) != 'undefined' && attrInitParam != '')
+			{
+				var attrs = $.DatasetList(attrInitParam);
+				param.put("ATTR_PARAM", attrs);
+			}
+		},
+		/*删除元素的费用*/
+		spDelFeeItem: function(param) {
+			var feeList = param.get('FEE_LIST');
+			var elemId = param.get('ELEMENT_ID');
+			var elemType = param.get("ELEMENT_TYPE_CODE", "");
+			if(typeof(feeList) != 'undefined' )
+			{
+				for(var index=0; index<feeList.length; index++)
+				{
+					var feeData = feeList.get(index);
+					var fee = feeData.get("FEE", ""); 
+					var feeMode = feeData.get("FEE_MODE", ""); 
+					var feeTypeCode = feeData.get("FEE_TYPE_CODE", ""); 
+					var payMode = feeData.get("PAY_MODE", "");
+					
+					
+					if(param.get('ELEMENT_TYPE_CODE') == 'A')
+					{
+						$.feeMgr.removeFee("240", feeMode,feeTypeCode,elemId);
+					}
+					else
+					{
+						$.feeMgr.removeFee("240",feeMode,feeTypeCode);
+					}
+				}
+			}
+		},
+		
+		spAddElem: function(elem) {
+			for(var index=0; index<gElems.length; index++)
+			{
+				var item = gElems.get(index);
+				if (item.get("ELEM_KEY") == elem.get("ELEM_KEY")) {
+					gElems.removeAt(index);
+					index--;
+					break;
+				}
+			}
+			gElems.add(elem);
+		},
+		spDelElem: function(elem) {
+			gElems.each(function(item, index, totalcount) {
+				if (item.get("ELEM_KEY") == elem.get("ELEM_KEY")) {
+					gElems.removeAt(index);
+					saleactiveModule.spDelFeeItem(item);
+				}
+			});
+		},
+		insertFee: function(tradeTypeCode, feeMode, feeTypeCode, fee, elementId) {
+			var feeData = new $.DataMap();
+			feeData.put("TRADE_TYPE_CODE", tradeTypeCode);
+			feeData.put("MODE", feeMode);
+			feeData.put("CODE", feeTypeCode);
+			feeData.put("FEE", fee);
+			if(typeof(elementId) != "undefined" && elementId != "")
+			{
+				feeData.put('ELEMENT_ID', elementId);
+			}
+			
+			$.feeMgr.insertFee(feeData);
+		},
+		spCheckResInfo: function(obj){
+			var button = $(obj);
+			var inpt = $("#GOODS_"+button.attr("index")+"_RES_CODE");
+			if(inpt.val() == ''){
+				alert('资源编码不能为空');return;
+			}
+			if(inpt.attr("enterstafftag")=="1"){
+				var saleStaff = $("#GOODS_"+button.attr("index")+"_STAFF_ID");
+				if(saleStaff.val()==''){
+					alert('请输入促销员工');return;
+				}
+			}
+			// 设置实物为未校验
+			saleactiveModule.spSetResCheckState("FALSE",inpt.attr("goodsId"));
+			
+			if($(inpt).val().length > 20){
+				alert('串码最多20位,您输入的终端串码过长,请确认后输入!');return;
+			}
+
+			var checkResParam = '&RES_TYPE_CODE='+inpt.attr('resTypeCode')+"&RES_ID="+inpt.attr('resId')+"&RES_NO="+inpt.val();
+			checkResParam += '&PRODUCT_ID='+$("#SALEACTIVE_PRODUCT_ID").val();
+			checkResParam += '&PACKAGE_ID='+$("#SALEACTIVE_PACKAGE_ID").val();
+			checkResParam += '&SPEC_TAG=checkResInfo';
+			checkResParam += "&EPARCHY_CODE=" + $('#SALEGOODS_EPARCHY_CODE').val();
+			checkResParam += "&RES_CHECK="+inpt.attr('resCheck');
+			checkResParam += "&SALE_STAFF_ID="+$("#GOODS_"+button.attr("index")+"_STAFF_ID").val();
+			
+			$.beginPageLoading("终端资源校验中。。。");	
+				
+			ajaxSubmit(null, null, checkResParam, $('#SALEGOODS_COMPONENT_ID').val(), 
+				   function(d){
+				      saleactiveModule.spAfterCheckResInfo(d, inpt);
+				   },
+			       function(errorcode, errorinfo){
+				      $.endPageLoading();
+				      $.showErrorMessage('终端预占失败',errorinfo);
+				   }
+			);
+		},
+		spSetResCheckState: function(state,goodsId){
+			var goods = saleactiveModule.spGetGoodByGoodId(goodsId);
+			if (goods) {
+				goods.put("HAS_CHECKED", state);
+				saleactiveModule.spAddElem(goods);
+			}
+		},
+		spGetGoodByGoodId: function(goodsId){
+			for (var i = 0; i < gElems.length; i++) {
+				var item = gElems.get(i);
+				if (item.get("ELEM_KEY").indexOf("GOODS")>=0&&item.get("ELEMENT_ID")==goodsId) {
+					return item;
+				}
+			}
+			return null;
+		},
+		
+		spGetGoods: function(goodsId){
+			var result = new $.DatasetList();
+			for (var i = 0; i < gElems.length; i++) {
+				var item = gElems.get(i);
+				if (item.get("ELEM_KEY").indexOf("GOODS")>=0) {
+					result.add(item);
+				}
+			}
+			return result;
+		},
+		spAfterCheckResInfo: function(ajaxDataset, obj){
+			$.endPageLoading();
+			if (ajaxDataset.length <= 0) {
+				alert("资源校验失败!");
+				return false;
+			}
+			var tgoods = saleactiveModule.spGetGoodByGoodId(obj.attr("goodsId"));
+			tgoods.put("HAS_CHECKED", "TRUE"); // 设置实物为已校验状态
+			tgoods.put("RES_CODE", $(obj).val()); // 资源号码
+			//tgoods.put("SALE_STAFF_ID", $("#GOODS_"+obj.attr("index")+"_STAFF_ID"));
+			saleactiveModule.spTerminalData(tgoods,ajaxDataset.get(0));
+			saleactiveModule.spAddElem(tgoods);
+			obj.attr("disabled","true");
+			alert("资源校验成功");
+		},
+		spTerminalData: function(goods, terminalParam){
+		    goods.put("DEVICE_MODEL_CODE", terminalParam.get('DEVICE_MODEL_CODE',	'')); // 终端类型编码
+			goods.put("DEVICE_MODEL", terminalParam.get('DEVICE_MODEL', '')); // 终端型号名称
+			goods.put("DEVICE_COST", terminalParam.get('DEVICE_COST', '')); // 终端成本价
+			goods.put("DEVICE_BRAND_CODE", terminalParam.get('DEVICE_BRAND_CODE',	'')); // 终端品牌编码
+			goods.put("DEVICE_BRAND", terminalParam.get('DEVICE_BRAND', '')); // 终端品牌名称
+			goods.put("SUPPLY_COOP_ID", terminalParam.get('SUPPLY_COOP_ID', '')); // 提供商编码
+			goods.put("DEPUTY_FEE", terminalParam.get('DEPUTY_FEE', '')); // 代办费
+			goods.put("SALE_PRICE", terminalParam.get('SALE_PRICE', '')); // 代办费
+			goods.put("RES_TYPE_CODE", terminalParam.get('RES_TYPE_CODE', ''));
+			goods.put("GOODS_IMEI", goods.get('RES_CODE', ''));
+		},
+		/*根据checkId获取一个元素*/
+		spGetElem: function(cbId) {
+			var cb = $('#'+cbId);
+			for (var i = 0; i < gElems.length; i++) {
+				var item = gElems.get(i);
+				if (item.get("ELEM_KEY") == cb.attr("id")) {
+					return item;
+				}
+			}
+			return null;
+		},
+		checkDepositGiftUser: function(obj){
+			obj = $(obj);
+			$("#"+obj.attr('chkboxid')).attr('user_id_a', '');
+			$("#"+obj.attr('chkboxid')).attr('serial_number_b', '');
+			$("#"+obj.attr('chkboxid')).attr('GIFT_SERIAL_NUMBER', '');
+			var elem = saleactiveModule.spGetElem(obj.attr('chkboxid'));
+			if(elem != null){
+				elem.put('GIFT_USER_ID', '');
+				elem.put('SERIAL_NUMBER_B', '');
+				elem.put('GIFT_SERIAL_NUMBER', '');
+
+
+			}
+			
+			if (obj.val() == ''){
+				return false;
+			}
+			
+			var userId = $('#SALEACTIVE_USER_ID').val();
+			var param = '&USER_ID='+userId;
+			param += '&GIFT_SERIAL_NUMBER='+obj.val();
+			param += '&PRODUCT_ID='+$("#SALEACTIVE_PRODUCT_ID").val();
+			param += "&PACKAGE_ID="+$("#SALEACTIVE_PACKAGE_ID").val();
+			param += '&SPEC_TAG=checkDepositGiftUser';
+			param += "&EPARCHY_CODE=" + $('#SALEDEPOSIT_EPARCHY_CODE').val();
+			ajaxSubmit(null, null, param, $('#SALEDEPOSIT_COMPONENT_ID').val(),
+				function(d) {saleactiveModule.afterCheckDepositGiftUser(d, obj)}, 
+				function(rscode, rsinfo) {saleactiveModule.checkDepositGiftUserFail(rscode, rsinfo, obj)});
+		},
+		delGiftFeeMember: function()
+		{
+			//获取当前行数据
+			tableedit = $.table.get("gifeFeeTable");
+			var data = tableedit.getRowData();
+			
+			if(data.get("GIFT_SERIAL_NUMBER") === undefined)
+			{
+				MessageBox.alert("提示信息","请选择一行",null);
+				return false;
+			}
+			
+			/*
+			tableedit.deleteRow(null, true);
+			
+			var stable = $.table.get("gifeFeeTable");
+			var sdata = stable.getTableData("GIFT_SERIAL_NUMBER,GIFT_FEE_VALUE",true);
+			
+			var feeStr="";
+			for(var i = 0; i < sdata.length; i++)
+			{
+				feeStr = feeStr+"#"+sdata.get(i).get(0)+"|"+sdata.get(i).get(1);
+			}
+			
+			$('#GIFT_FEE_STR').val(feeStr);
+			*/
+			var param = '&GIFT_SERIAL_NUMBER='+data.get("GIFT_SERIAL_NUMBER");
+			param += '&GIFT_FEE_STR='+$('#GIFT_FEE_STR').val();
+			param += '&PRODUCT_ID='+$("#SALEACTIVE_PRODUCT_ID").val();
+			param += "&PACKAGE_ID="+$("#SALEACTIVE_PACKAGE_ID").val();
+			param += '&SPEC_TAG=deleteGiftUser';
+			param += "&EPARCHY_CODE=" + $('#SALEDEPOSIT_EPARCHY_CODE').val();
+			ajaxSubmit(null, null, param, $('#SALEDEPOSIT_COMPONENT_ID').val(),
+				function(d) {MessageBox.alert("提示信息","取消赠费成功",null);}, 
+				function(rscode, rsinfo) {MessageBox.alert("提示信息",'取消赠送号码失败：'+rsinfo,null);});
+		},
+		checkGiftMember: function(){
+			var giftfee = $('#GIFT_FEE_VALUE').val();
+			var giftsn = $('#GIFT_SERIAL_NUMBER').val();
+			var userId = $('#SALEACTIVE_USER_ID').val();
+			
+			var stable = $.table.get("gifeFeeTable");
+			var sdata = stable.getTableData("GIFT_SERIAL_NUMBER,GIFT_FEE_VALUE",true);
+			
+			for(var i = 0; i < sdata.length; i++)
+			{
+				if(sdata.get(i).get(0) == giftsn)
+				{
+					MessageBox.alert("提示信息","用一个号码不可重复赠送",null);
+					return false;
+				}
+			}
+			
+			var param = '&USER_ID='+userId;
+			param += '&GIFT_SERIAL_NUMBER='+giftsn;
+			param += '&GIFT_FEE_VALUE='+giftfee;
+			param += '&GIFT_FEE_STR='+$('#GIFT_FEE_STR').val();
+			param += '&PRODUCT_ID='+$("#SALEACTIVE_PRODUCT_ID").val();
+			param += "&PACKAGE_ID="+$("#SALEACTIVE_PACKAGE_ID").val();
+			param += '&SPEC_TAG=checkDepositGiftUser';
+			param += "&EPARCHY_CODE=" + $('#SALEDEPOSIT_EPARCHY_CODE').val();
+			ajaxSubmit(null, null, param, $('#SALEDEPOSIT_COMPONENT_ID').val(),
+				function(d) {saleactiveModule.afterCheckMoreGiftUser(d, obj)}, 
+				function(rscode, rsinfo) {saleactiveModule.checkMoreGiftUserFail(rscode, rsinfo, obj)});
+		},
+		checkMoreGiftUserFail: function(rscode, rsinfo, obj)
+		{
+			MessageBox.alert("提示信息",'赠送号码校验失败：'+rsinfo,null);
+		},
+		afterCheckMoreGiftUser: function(ajaxData, obj)
+		{
+			/*
+			var giftfee = $('#GIFT_FEE_VALUE').val();
+			var giftsn = $('#GIFT_SERIAL_NUMBER').val();
+			
+			var stable = $.table.get("gifeFeeTable");
+			var sdata = stable.getTableData("GIFT_SERIAL_NUMBER,GIFT_FEE_VALUE",true);
+			
+			var feeStr="";
+			for(var i = 0; i < sdata.length; i++)
+			{
+				if(sdata.get(i).get(0) == giftsn)
+				{
+					MessageBox.alert("提示信息","用一个号码不可重复赠送",null);
+					return false;
+				}
+				feeStr = feeStr + "#"+sdata.get(i).get(0)+"|"+sdata.get(i).get(1);
+			}
+			
+			var fdata = $.ajax.buildJsonData("gifeFeeTable");
+		
+			fdata["GIFT_SERIAL_NUMBER"] = giftsn;
+			fdata["GIFT_FEE_VALUE"] = giftfee;
+			fdata["X_TAG"] = "0";
+			
+			stable.addRow(fdata);
+			
+			feeStr = feeStr + "#" + giftsn+"|"+giftfee;
+			//$('#GIFT_SHOW_INFO').val($('#GIFT_SHOW_INFO').val() + "  " + giftsn+"赠送"+giftfee);
+			//$('#GIFT_FEE_STR').val($('#GIFT_FEE_STR').val() + "#" + giftsn+"|"+giftfee);
+			$('#GIFT_FEE_STR').val(feeStr);
+			*/
+			//alert($('#GIFT_FEE_STR').val());
+			MessageBox.alert("提示信息","赠送号码校验成功",null);
+		},
+		afterCheckDepositGiftUser: function(ajaxData, obj){
+			var elem = saleactiveModule.spGetElem(obj.attr('chkboxid'));
+			if(elem != null)
+			{
+			    var confirmSet = ajaxData.get("TIPS_TYPE_CHOICE");
+				var warnSet = ajaxData.get("TIPS_TYPE_TIP");
+				if(confirmSet && confirmSet.length>0){
+					var flag = true;
+					confirmSet.each(function(item, index, totalCount){
+						if(!window.confirm(item.get("TIPS_INFO"))){
+							flag = false;
+							return false;
+						}
+					});
+					if(!flag) return false;
+				}
+				if(warnSet && warnSet.length>0){
+					warnSet.each(function(item, index, totalCount){
+						window.alert(item.get("TIPS_INFO"));
+					});
+				}
+				debugger;
+/*				elem.put('GIFT_USER_ID', ajaxData.get(0).get('GIFT_USER_ID'));
+*/				elem.put('SERIAL_NUMBER_B', obj.val());	
+				elem.put('GIFT_SERIAL_NUMBER', obj.val());					
+				/*elem.put('GIFT_START_DATE', ajaxData.get(0).getString('GIFT_START_DATE'));
+				elem.put('GIFT_END_DATE', ajaxData.get(0).getString('GIFT_END_DATE'));*/
+				alert('赠送号码校验成功');
+			}
+		},
+		checkDepositGiftUserFail: function(rscode, rsinfo, obj){
+			obj.val('');	
+			var elem = saleactiveModule.spGetElem(obj.attr('chkboxid'));
+			elem.put("SERIAL_NUMBER_B", "");
+			elem.put("GIFT_USER_ID", "");
+			elem.put('GIFT_START_DATE',"");
+			elem.put('GIFT_END_DATE',"");
+			alert('赠送号码校验失败：'+rsinfo);
+		},
+		checkDepositMoney: function(obj){
+			obj = $(obj);
+			
+			var oldValue = obj.attr('oldValue')/100;
+			var feeMode = obj.attr('feeMode');
+			var feeTypeCode = obj.attr('feeTypeCode');
+			var elementId = obj.attr('elementId');
+			if(obj.val() == ""){ 
+				alert("预存不能为空");
+				obj.val(oldValue);
+				return false;
+			}
+			
+			var deposit_high_value = obj.attr('deposit_high_value');
+			var deposit_low_value  = obj.attr('deposit_low_value');
+			var idepositfee		   = parseInt(obj.val())*100;
+			
+			if (idepositfee < parseInt(deposit_low_value) || idepositfee > parseInt(deposit_high_value)) {
+				alert('输入的预存款必须在'+parseInt(deposit_low_value)/100 + '元和' + parseInt(deposit_high_value)/100 + '元之间');
+				obj.val(oldValue);
+				return false;
+			}
+			$.feeMgr.removeFee("240", feeMode, feeTypeCode, elementId);
+			
+			saleactiveModule.insertFee("240", feeMode, feeTypeCode, idepositfee, elementId);
+			
+			obj.attr('oldValue', parseInt(obj.val())*100);
+			
+			var checkboxId = obj.attr('chkboxid');
+			var checkboxObj = $('#'+checkboxId);
+			checkboxObj.attr('fee', parseInt(obj.val())*100);
+			checkboxObj.attr('fee_mode', feeMode);
+			checkboxObj.attr('fee_type_code', feeTypeCode);
+			checkboxObj.attr('pay_mode', '0');
+			
+			var elem = saleactiveModule.spGetElem(obj.attr('chkboxid'));
+			if(elem != null){
+				elem.put('FEE', parseInt(obj.val())*100);
+				elem.put('FEE_MODE', feeMode);
+				elem.put('FEE_TYPE_CODE', feeTypeCode);
+				elem.put('PAY_MODE', '0');
+			}
+			
+			return true;
+		},
+		/**异步方式修改活动生效时间*/
+		modifySaleDate:function(modifyTag,modifyValue){
+			var param = "";
+			var packageId = $("#SALEACTIVE_PACKAGE_ID").val();
+			var productId = $("#SALEACTIVE_PRODUCT_ID").val();
+			var eparchyCode = $('#'+$('#SALEACTIVEMODULE_EPARCHY_CODE_COMPID').val()).val();
+			var serialNumber = saleactive.getSerialNum();
+			var userId = $('#SALEACTIVE_USER_ID').val();
+			if(modifyTag=='2'){
+		    	param = '&MONTH_SUM='+modifyValue+'&MODIFY_TAG='+modifyTag;
+			} else if(modifyTag=='1'){
+				param = '&ENABLE_TAG='+modifyValue+'&MODIFY_TAG='+modifyTag;
+			} else if(modifyTag=='3'){
+				param = '&ATTR_LIST='+modifyValue+'&MODIFY_TAG='+modifyTag+'&CHOSE_DATE='+$('#SALEACTIVE_START_DATE').val();
+			} else if(modifyTag=='4'){
+				param = '&ENABLE_TAG='+modifyValue+'&MODIFY_TAG=4'+'&END_OFFSET='+$("#CHANGED_END_OFFSET").val();
+			}else if(modifyTag=='6'){
+				param = '&CHOSE_DATE='+modifyValue+'&MODIFY_TAG=6'+'&ATTR_CODE=ITEM_START_DATE&END_OFFSET='+$("#CHANGED_END_OFFSET").val();
+			}
+			param += '&ACTIVE_TYPE='+$("#ACTIVE_TYPE").val();
+			param += '&BOOK_DATE='+$('#SALEACTIVE_BOOK_DATE').val();
+	    	param += '&PACKAGE_ID='+packageId+'&PRODUCT_ID='+productId+'&SPEC_TAG=MODIFY_DATE'+'&EPARCHY_CODE='+eparchyCode;
+	    	param +='&SERIAL_NUMBER='+serialNumber+'&USER_ID='+userId;
+	    	$.beginPageLoading("修改活动属性。。。");	
+	    	ajaxSubmit(this,null,param,'saleDatePart',function(ajaxReturnData){
+	    					$.endPageLoading();
+				            var startDate = ajaxReturnData.get('START_DATE');
+				            var endDate = ajaxReturnData.get('END_DATE');
+				            $("#SALEACTIVE_START_DATE").val(startDate);
+							$("#SALEACTIVE_END_DATE").val(endDate);
+							if(typeof($("#SP_STARTDATE_TAG").val()) != 'undefined' && $("#SP_STARTDATE_TAG").val() != '' && $("#SP_STARTDATE_TAG").val() == '1')
+								$("#SALEACTIVE_START_DATE").attr('disabled',false);
+							$("#CHANGED_STATE_DATE").val(startDate);
+				         },function(error_code,error_info){
+				        	 $.endPageLoading();
+				        	 alert(error_info);
+                         });
+		},
+		/**基数包月活动，根据作用月份重新计算活动时间*/
+		setSaleDateByMonth:function(){
+			
+			var monthSum = $("#MONTH_SUM").val();
+			if (monthSum=='')
+    		{
+     			alert("作用月份不能为空!");
+     			return false;
+   			}
+    		
+    		if (!(/(^[1-9]\d*$)/.test(monthSum)))
+			{
+				alert("作用月份必须为1~99的正整数!");
+				$("#MONTH_SUM").val('');
+				$("#SALEACTIVE_START_DATE").val('');
+				$("#SALEACTIVE_END_DATE").val('');
+				return false;
+			}
+    	
+	    	if (parseInt(monthSum)>100||parseInt(monthSum)<1)
+			{
+	     		alert("作用月份必须为1~99的正整数!");
+	     		$("#MONTH_SUM").val('');
+				$("#SALEACTIVE_START_DATE").val('');
+				$("#SALEACTIVE_END_DATE").val('');
+	     		return false;
+	    	}
+	    	saleactiveModule.modifySaleDate(2,monthSum);
+		},
+		/**enable_tag=3，手动选择生效方式*/
+		setSaleDateByEnableTag:function(obj){
+			var obj = $(obj);
+			var enableTag = obj.val();
+			if(enableTag != ''){
+				saleactiveModule.modifySaleDate(4,enableTag);
+			}
+		},
+		/*校验有价卡信息*/
+		checkCardResInfo:function(obj){
+			var cardCupFee = $("#CARD_CUP_FEE").val();
+			if(cardCupFee == '') cardCupFee = '0';
+			var packFee = $("#PACK_FEE").val();
+			if(packFee == '') packFee = '0';
+			if(cardCupFee == packFee && packFee != '0'){
+				$.showErrorMessage('输入的卡号总额面值已经满足此营销包要求,不需要新增有价卡！');
+				return ;
+			}
+			
+			var cardCode = $("#RES_CARD_CODE").val();
+			if(cardCode == ''){
+				alert('有价卡号码不能为空');
+				return ;
+			}
+			/*if((/^([+-]?)(\d+)$/.test(cardCode))){
+				alert('必须输入有效的有价卡编码');
+				 $("#RES_CARD_CODE").val('');
+				 return ;
+			}*/
+			
+			var valueCardList = $.table.get('eleCardTable').getTableData();
+			if(valueCardList.length > 0)
+			{
+				for(var i=0; i<valueCardList.length; i++)
+				{
+					var valueCardData = valueCardList.get(i);
+					if(valueCardData.get('CARD_CODE') == cardCode)
+					{
+						alert("同一张有价卡不能重复添加");
+						$("#RES_CARD_CODE").val('');
+						return;
+					}
+					
+				}
+			}
+			
+			var packId = $("#SALEACTIVE_PACKAGE_ID").val();
+			var eparchyCode = $('#'+$('#SALEACTIVEMODULE_EPARCHY_CODE_COMPID').val()).val();
+			var serialNumber = saleactive.getSerialNum();
+			if(packFee == '0'){
+				//如果当前营销包配置有价卡费用为空，则需要重新查询配置
+				$.beginPageLoading("校验有价卡。。。");	
+               ajaxSubmit(null, null,'&PACKAGE_ID='+packId+'&EPARCHY_CODE='+eparchyCode+'&SERIAL_NUMBER='+serialNumber, 
+               		'CardResPart', saleactiveModule.checkCardRes,
+					function(errorcode, errorinfo){
+				$.endPageLoading();
+				$.showErrorMessage('活动查询失败',errorinfo);});
+			} else {
+				//如果营销包有价卡配置不为空，则直接校验有价卡信息
+				var packFee = $("#RES_CARD_CODE").val();
+				if(packFee == "" || packFee == "0"){
+					$.showErrorMessage('当前营销包配置有价卡金额为0， 请确认包配置!');
+					return;
+				}
+				var eparchyCode = $('#'+$('#SALEACTIVEMODULE_EPARCHY_CODE_COMPID').val()).val();
+				$.beginPageLoading("校验有价卡。。。");	
+				$('#VALUECARD_CHECKTAG').val('0');//设置默认值。默认校验不通过
+             	ajaxSubmit(null, null,'&RES_NO='+cardCode+'&SPEC_TAG=CHECK_CARD&EPARCHY_CODE='+eparchyCode, 
+               		'CardResPart',saleactiveModule.afterCheckCard,
+					function(errorcode, errorinfo){
+             		$.endPageLoading();
+					$.showErrorMessage('资源校验失败',errorinfo);});
+			}
+		},
+		checkCardRes:function(data){
+			var goodsValue = data.get("GOODS_VALUE");
+			if(goodsValue == "" || goodsValue == "0"){
+				alert('当前营销包配置有价卡金额为0， 请确认包配置!');
+				return;
+			}
+			$("#PACK_FEE").val(goodsValue);
+			var resCardCode = $("#RES_CARD_CODE").val();
+			$('#VALUECARD_CHECKTAG').val('0');//设置默认值
+			var eparchyCode = $('#'+$('#SALEACTIVEMODULE_EPARCHY_CODE_COMPID').val()).val();
+             ajaxSubmit(null, null,'&RES_NO='+resCardCode+'&SPEC_TAG=CHECK_CARD&EPARCHY_CODE='+eparchyCode, 
+               		'CardResPart',saleactiveModule.afterCheckCard,
+					function(errorcode, errorinfo){
+            	 $.endPageLoading();
+				$.showErrorMessage('资源校验失败',errorinfo);});
+		},
+		afterCheckCard:function(data){
+			$.endPageLoading();
+			if (data.length <= 0) {
+				alert("资源校验失败!");
+				return;
+			}
+			$('#VALUECARD_CHECKTAG').val('1');
+			var reskindcode = data.get('RES_KIND_CODE');//卡类型编码
+			var cardkindname = data.get('KIND_NAME');//卡类型
+			var cardprice = data.get('VALUE_PRICE');//有价卡金额
+			var activeflag = data.get('ACTIVE_FLAG');//激活标记
+			var cardenddate = data.get('END_DATE');//有价卡有效期
+			var curPrice = $("#CARD_CUP_FEE").val();
+			if(curPrice == "" || isNaN(curPrice)) 
+			{
+				curPrice = "0";
+			}
+			
+			var allPrice = $("#PACK_FEE").val();
+			//所有已添加有价卡金额超过当前营销包配置金额上限
+			if(parseInt(curPrice) + parseInt(cardprice) > parseInt(allPrice))
+			{
+	    		alert('有价卡总额超过营销包配置的有价卡额度,请确认!');
+				return;
+			}
+			$("#CARD_CUP_FEE").val(parseInt(curPrice) + parseInt(cardprice));
+			$("#CARD_TYPE").val(cardkindname);
+			$("#CARD_KIND").val(reskindcode);
+			$("#CARD_PRI").val(cardprice);
+			$("#CARD_ENDDATE").val(cardenddate);
+			$("#CARD_ACTIVE_FLAG").val(activeflag);
+			$("#CARD_CODE").val($("#RES_CARD_CODE").val());
+			var eleCardData = $.ajax.buildJsonData("CardResPart");
+			$.table.get("eleCardTable").addRow(eleCardData);
+			$("#RES_CARD_CODE").val("");
+		},
+		deleteDept:function(obj) {
+			var rowData = $.table.get("eleCardTable").getRowData();
+			var resCardCode = rowData.get('CARD_CODE');
+			var eparchyCode = $('#'+$('#SALEACTIVEMODULE_EPARCHY_CODE_COMPID').val()).val();
+			//对已选占的号码进行释放
+			ajaxSubmit(null, null,'&RES_NO='+resCardCode+'&EPARCHY_CODE='+eparchyCode+'&SPEC_TAG=RELEASE_CARD', 
+               		'CardResPart',function(ajaxReturnData){
+               			var cardFee = $("#CARD_CUP_FEE").val();//有价卡费用总和
+						var currCardFee = $("#CARD_PRI").val();//当前有价卡费用
+						var remainderCardFee = parseInt(parseInt(cardFee)-parseInt(currCardFee))
+						if(remainderCardFee > 0)
+						{
+							$("#CARD_CUP_FEE").val(remainderCardFee);
+						}
+						else
+						{
+							$("#CARD_CUP_FEE").val('0');
+						}
+						$.table.get("eleCardTable").deleteRow();
+               		},
+					function(errorcode, errorinfo){
+				$.showErrorMessage('资源校验失败',errorinfo);});
+		},
+		checkSepcSnInfo:function(obj){
+			var obj = $(obj);
+			var specSerialNum = obj.val();
+			if(specSerialNum == ''){
+				alert("请选择有效的专属号码");
+				return;
+			}
+			
+			var packageId = $("#SALEACTIVE_PACKAGE_ID").val();
+			var eparchyCode = $('#'+$('#SALEACTIVEMODULE_EPARCHY_CODE_COMPID').val()).val();
+			var serialNumber = saleactive.getSerialNum();
+			var userId = $('#SALEACTIVE_USER_ID').val();
+			
+			ajaxSubmit(null, null,'&RES_NO='+specSerialNum+'&SPEC_TAG=CHECK_SECPNUM&EPARCHY_CODE='+eparchyCode+'&PACKAGE_ID='+packageId+'&SERIAL_NUMBER='+serialNumber, 
+               		'defaulePart',function(data){
+               			var xResultCode	= data.get('X_RESULTCODE', '0');
+               			if(xResultCode == '0'){
+               				$('#SEPC_NUMTAG').val("0");
+               				alert('资源校验成功');
+               			}
+               		},
+					function(errorcode, errorinfo){
+				$.showErrorMessage('资源校验失败',errorinfo);});
+			
+		},
+		checkGoodsType:function(obj){
+			var obj = $(obj);
+			var goodsType = obj.val();
+			if(goodsType == ''){
+				alert('请选择物品活动类型');
+				return;
+			}
+			
+			var packageId = $("#SALEACTIVE_PACKAGE_ID").val();
+			var eparchyCode = $('#'+$('#SALEACTIVEMODULE_EPARCHY_CODE_COMPID').val()).val();
+			var serialNumber = saleactive.getSerialNum();
+			var userId = $('#SALEACTIVE_USER_ID').val();
+			var productId = $('#SALEACTIVE_PRODUCT_ID').val();
+			$.beginPageLoading("终端资源校验。。。");
+			ajaxSubmit(null, null,'&ORDER_NO='+goodsType+'&SPEC_TAG=GOODS_CHECK&EPARCHY_CODE='+eparchyCode+'&PACKAGE_ID='+packageId+'&SERIAL_NUMBER='+serialNumber+'&PRODUCT_ID='+productId, 
+               		'defaulePart',function(data){
+               			$.endPageLoading();
+               			var goodsData = data.get('GOODS_INFO');
+               			var xResultCode	= goodsData.get('X_RESULTCODE', '0');
+               			var goodsDetail = goodsData.get('TERMINAL_DETAIL_INFO');
+               			if(typeof(goodsDetail) != "undefined") $("#TERMINAL_DETAIL_INFO").val(goodsDetail);
+               			if(xResultCode == '0'){
+               				$('#GOODSTYPE_CHECKTAG').val("0");
+               			}
+               		},
+					function(errorcode, errorinfo){
+					$.endPageLoading();
+					$.showErrorMessage('资源校验失败',errorinfo);});
+			
+		},
+		/*提交按钮触发对页面参数必填项进行非空判断*/
+		checkInputParam:function()
+		{
+			var monthSum = $("#MONTH_SUM").val();
+			var enableTag = $("#ENABLE_TAG").val();
+			var saleType = $("#SALE_TYPE").val();
+			var orderType = $("#ORDER_TYPE").val();
+			if(typeof(enableTag) != "undefined")
+			{
+				if(enableTag == '')
+				{
+					alert("活动生效方式不能为空");
+					return false;
+				}
+			}
+			
+			if(typeof(monthSum) != "undefined")
+			{
+				if(monthSum == '')
+				{
+					alert("基数包月活动作用月份不能为空");
+					return false;
+				}
+			}
+			
+			if(typeof(saleType) != "undefined")
+			{
+				if(saleType == '')
+				{
+					alert("活动类型不能为空");
+					return false;
+				}
+			}
+			
+			if(typeof(orderType) != "undefined")
+			{
+				if(orderType == '')
+				{
+					alert("物品活动类型不能为空");
+					return false;
+				}
+			}
+			var outNetPhone = $('#OUT_NET_PHONE').val();
+			var phoneSouce = $('#PHONE_SOURCE').val();
+			if(typeof(outNetPhone) != "undefined")
+			{
+				if(phoneSouce == '2')
+				{
+					if(outNetPhone == '')
+					{
+						alert("回归号码不能为空");
+						return false;
+					}
+				}
+				
+			}
+			
+			var actorName = $('#ACTOR_NAME').val();
+			if(typeof(actorName) != "undefined")
+			{
+				if(actorName == '')
+				{
+					alert("经办人不能为空");
+					return false;
+				}
+			}
+			var errMsg = $('#ERR_MSG').val();
+			var arrtFlag = $('#PACKAGE_ATTRS').val();//false 表示有属性信息，true表示没有属性信息
+			if(errDataList.length>0)
+			{
+				alert(errDataList.get(0).get('ELEMENT_ERRINFO'));
+				return false;
+			}
+			return true;
+		},
+		changePhone: function(obj){
+			obj = $(obj);
+			if(typeof(obj.val()) != "undefined")
+			{
+				if(obj.val() == '2')
+				{
+					$("#OUT_NET_PHONE").attr('disabled', false);
+					$("#OUT_NET_PHONE").focus().select();
+				}
+				else
+				{
+					$("#OUT_NET_PHONE").attr('disabled', true);
+					$("#OUT_NET_PHONE").val('');
+				}
+			}
+		},
+		occupyReleaseGoods: function()
+		{
+			var param = '';
+			var campnType = $('#TEMP_CAMPN_TYPE').val();
+			var serialNum  = saleactive.getSerialNum();
+			var goodsImei = $('#NEW_IMEI').val();
+			var eparchyCode = $('#'+$('#SALEACTIVE_EPARCHY_CODE_COMPID').val()).val();
+			var packageId = $('#TEMP_PACKAGE_ID').val();
+			var terminalChanlType = $('#TERMINAL_CHANNEL_TYPE').val();
+			if(campnType == 'YJK1' && packageId != '')
+			{
+				var valueCardList = $.table.get('eleCardTable').getTableData();
+				
+				if(valueCardList.length > 0)
+				{
+					var valueCardStr = '';
+					for(var i=0; i<valueCardList.length; i++)
+					{
+						var valueCard = valueCardList.get(i);
+						valueCardStr += valueCard.get('CARD_CODE')+',';
+					}
+					param = '&VALUE_CARD_LIST='+valueCardStr.toString(); 
+				}
+			}
+			if(typeof(goodsImei) != "undefined") param +='&IMEI='+goodsImei;
+			if(typeof(campnType) != "undefined") param +='&CAMPN_TYPE='+campnType;
+			if(typeof(packageId) != "undefined") param +='&PACKAGE_ID='+packageId;
+			if(typeof(terminalChanlType) != "undefined") param +='&CHANL_TYPE='+terminalChanlType;
+			param +='&EPARCHY_CODE='+eparchyCode+'&SERIAL_NUMBER='+serialNum+'&SPEC_TAG=RELEASE_SC';
+			if(serialNum != '')
+			{
+				ajaxSubmit(null, null, param,'defaulePart',function(data){
+					return true;
+				},
+				function(errorcode, errorinfo){
+					$.endPageLoading();
+					$.showErrorMessage('活动查询失败',errorinfo);
+				});
+			}
+			
+		},
+		changeSaleStartDate:function(){
+			var serialNum  = saleactive.getSerialNum();
+			var saleStartDate = $('#SALEACTIVE_START_DATE').val();
+			var eparchyCode = $('#'+$('#SALEACTIVE_EPARCHY_CODE_COMPID').val()).val();
+			var myDate = new Date();
+			var year  = myDate.getFullYear();
+			var month = myDate.getMonth() + 1;
+			var day   = myDate.getDate();
+			month = (parseInt(month) < 10) ? ("0" + month) : (month);
+			day   = (parseInt(day)   < 10) ? ("0" + day )  : (day);
+			currentDate =year+'-'+month+'-'+day;
+			if(saleStartDate < currentDate)
+			{
+				var errMsgStr = '营销活动选择的活动开始时间不能小于当前时间['+currentDate+']';
+				salefeeitem.spAddErrMsg('1020',errMsgStr,'PACKAGE_ID');
+				alert(errMsgStr);
+				return false;
+			}
+			else
+			{
+				salefeeitem.spDelErrMsg('1020','PACKAGE_ID');
+			}
+			saleactiveModule.modifySaleDate("6",saleStartDate);
+		},
+		/** 积分修改 回车响应*/
+		spScoreChanged: function(obj) {
+			obj = $(obj);
+			var checkboxObj = $("#"+obj.attr("cbId"));
+			if (checkboxObj.attr("checked")) {
+				saleactiveModule.spDelElemById(obj.attr("cbId"));
+				saleactiveModule.spDecodeElem(obj.attr("cbId"));
+			}
+		}
+	});
+})();
+	

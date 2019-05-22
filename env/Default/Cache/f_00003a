@@ -1,0 +1,520 @@
+(function($){
+	$.extend({posTradeHFRT:{
+		POS_CONFIGHK: null,   	//POS配置数据 海科融通
+		POS_LOG_ID: null,       //POS刷卡日志ID,或返销的刷卡ID
+		
+		/**
+		* 设置海科融通通用参数
+		* IS_POS_PAYORCANCEL: 收费收费还是返销(feecancel),默认是收费(true)
+		* CANCEL_TRADE_POS_ID: 返销的trade_id
+		*/
+		setPosDataHK:function(key,value){
+			if(!$.posTradeHFRT.POS_CONFIGHK){
+				$.posTradeHFRT.POS_CONFIGHK = $.DataMap();
+			}
+			$.posTradeHFRT.POS_CONFIGHK.put(key,value);
+		},
+		
+		/**
+		 * 设置POS参数  用到auth组件的是auth组件自己set这个参数了，没有用到使用费用组件的需要自己设置
+		 * tradeTypeCode 业务类型编码
+		 * serialNumber  服务号码
+		 * eparchCode    地州编码，POS刷卡记录登记地州
+		 * userId  		 用户ID，非必传参数,对于开户情况，此字段设置为null或者直接用服务号码替换
+		 */
+		 
+		setPosParam:function(tradeTypeCode, serialNumber, eparchCode, userId){
+//			if(!tradeTypeCode || !serialNumber){
+//				MessageBox.alert("信息提示", "设置POS参数：业务类型编码,服务号码为必传参数!");
+//				return ;
+//			}
+			var posInfo = $.DataMap();
+			posInfo.put("TRADE_TYPE_CODE", 	tradeTypeCode);
+			posInfo.put("SERIAL_NUMBER", 	serialNumber);
+			if(eparchCode){
+				posInfo.put("FEE_EPARCHY_CODE", eparchCode);
+			}
+			if(userId && userId != ""){
+				posInfo.put("USER_ID", 	userId);
+			}else{
+				posInfo.put("USER_ID", 	serialNumber);//针对开户
+			}			
+			$.posTradeHFRT.POS_CONFIGHK = posInfo;
+		},
+		
+		/**
+		* 获取POS机的配置信息	海科融通支付公共参数配置
+		*/	
+		getPosConfigHK:function(){
+			//只有刷卡返销的时候这个字段才有值(这个字段现在存的是order_id)
+			var cancelPosId = $.posTradeHFRT.POS_CONFIGHK.get("CANCEL_TRADE_POS_ID"); 
+			if(!cancelPosId) cancelPosId = "";
+			//这个存储是trade_id
+			var cancelTradeId = $.posTradeHFRT.POS_CONFIGHK.get("RELATION_TRADE_ID"); 
+			if(!cancelTradeId) cancelTradeId = "";
+			
+			var eparchyCode = $.posTradeHFRT.POS_CONFIGHK.get("FEE_EPARCHY_CODE"); 
+			if(!eparchyCode){
+				alert("请设置路由地州!");
+				return;
+			}
+			var serNum = $.posTradeHFRT.POS_CONFIGHK.get("SERIAL_NUMBER");
+			var userId = $.posTradeHFRT.POS_CONFIGHK.get("USER_ID");
+			var param = "&CANCEL_TRADE_POS_ID="+cancelPosId+"&SERIAL_NUMBER="+serNum+"&USER_ID="+userId+"&ROUTE_EPARCHY_CODE="+eparchyCode
+						+"&RELATION_TRADE_ID="+cancelTradeId;
+			$.httphandler.get($.feeMgr.CLAZZ, "loadPosConfigHk", param, 
+				function(jsonData){
+					if(jsonData.data && !$.isEmptyObject(jsonData.data)){
+						if(!$.posTradeHFRT.POS_CONFIGHK){
+							$.posTradeHFRT.POS_CONFIGHK = $.DataMap();
+						}
+						$.posTradeHFRT.POS_CONFIGHK.put("TRADE_POS_ID",jsonData.data.TRADE_POS_ID);
+						$.posTradeHFRT.POS_CONFIGHK.put("TRADE_STAFF_ID",jsonData.data.TRADE_STAFF_ID);
+						$.posTradeHFRT.POS_CONFIGHK.put("TRADE_DEPART_ID",jsonData.data.TRADE_DEPART_ID);
+						$.posTradeHFRT.POS_CONFIGHK.put("TRADE_CITY_CODE",jsonData.data.TRADE_CITY_CODE);
+						$.posTradeHFRT.POS_CONFIGHK.put("TRADE_EPARCHY_CODE",jsonData.data.TRADE_EPARCHY_CODE);
+						$.posTradeHFRT.POS_CONFIGHK.put("PARA_CODE2",jsonData.data.PARA_CODE2);
+						$.posTradeHFRT.POS_CONFIGHK.put("PARA_CODE3",jsonData.data.PARA_CODE3);
+						$.posTradeHFRT.POS_CONFIGHK.put("PARA_CODE4",jsonData.data.PARA_CODE4);
+						$.posTradeHFRT.POS_CONFIGHK.put("PARA_CODE5",jsonData.data.PARA_CODE5);
+						
+						if(cancelPosId != ""){
+							$.posTradeHFRT.POS_CONFIGHK.put("IS_TODAY",jsonData.data.IS_TODAY);
+							$.posTradeHFRT.POS_CONFIGHK.put("POS_FEE",jsonData.data.POS_FEE);
+							$.posTradeHFRT.POS_CONFIGHK.put("TRACKING_NO",jsonData.data.TRACKING_NO);
+							$.posTradeHFRT.POS_CONFIGHK.put("POS_TRADE_ID",jsonData.data.POS_TRADE_ID);
+							$.posTradeHFRT.POS_CONFIGHK.put("TRADE_ID",jsonData.data.TRADE_ID);
+							$.posTradeHFRT.POS_CONFIGHK.put("TRADING_DATE",jsonData.data.TRADING_DATE);
+							$.posTradeHFRT.POS_CONFIGHK.put("RSRV_STR2",jsonData.data.RSRV_STR2);
+							$.posTradeHFRT.POS_CONFIGHK.put("RES_TRADE_TYPE_CODE",jsonData.data.RES_TRADE_TYPE_CODE);
+							$.posTradeHFRT.POS_CONFIGHK.put("SERIAL_NUMBER",jsonData.data.SERIAL_NUMBER);
+							$.posTradeHFRT.POS_CONFIGHK.put("CANCEL_POS",jsonData.data.CANCEL_POS);
+							$.posTradeHFRT.POS_CONFIGHK.put("AUDITFLAG",jsonData.data.AUDITFLAG);
+							$.posTradeHFRT.POS_CONFIGHK.put("POSCANCELFLAG",jsonData.data.POSCANCELFLAG);
+						}
+						
+						//展示收费还是返销的标志 每个业务自己传参数,不传的话根据费用为正则收费,为负则返销
+						var isPosOrCancel = $.posTradeHFRT.POS_CONFIGHK.get("IS_POS_PAYORCANCEL");
+						if(!isPosOrCancel){ //isPosOrCancel = "true";
+							var payTotalFee = $.feeMgr.getTotalFee(1);
+							if(parseFloat(payTotalFee)>0){
+								isPosOrCancel = "true";
+							}else{
+								isPosOrCancel = "feecancel";
+							}
+						}
+						var posTypeStr = [];
+						var showFlag = false;
+						var posPayArr=jsonData.data.POS_PAYTYPE_ARR;
+						for(var i=0; i<posPayArr.length; i++){
+							if((isPosOrCancel=='true' && posPayArr[i].ID == '0')//收费
+									|| (isPosOrCancel=='feecancel' && posPayArr[i].ID == '1')){
+								showFlag = true;
+								posTypeStr.push('<option value="'+posPayArr[i].ID+'">'+posPayArr[i].NAME+'</option>');
+							}
+						}
+						
+						if(showFlag){
+							$("#POST_TYPE_LIST").html(posTypeStr.join(""));
+							$("#POST_TYPE_LIST").bind("change", $.posTradeHFRT.changePosType);
+							//没权限的直接置灰 POS_RETURN_TAG:返销标记,选中则是0,不选中则是1
+							if(jsonData.data.POSCANCELPOSPAYFEEHKRT != 'true'){
+								$("#POS_RETURN").attr("disabled","true");
+							}
+							$.posTradeHFRT.changePosType();
+						}else{
+							$("#POSCRAD").css("display","none");
+							alert("您没权限选择海科融通这种支付方式!");
+						}
+						posTypeStr=null;
+					}
+				},
+				function(code, info, detail){
+					MessageBox.alert("错误提示","POS配置数据加载失败！",null, null, info, detail);
+				},{
+					dataType:"json",
+					simple:true,
+					async: false
+			});
+		},
+		
+		changePosType:function(){
+			var posType = $("#POST_TYPE_LIST").val();
+			$("#POSCRAD li:eq(0)").css("display", "none");
+			if(posType == '0'){//POS收费
+				$("#POSCRAD li:eq(1)").css("display", "");
+				$("#POSCRAD li:eq(2)").css("display", "none");
+				$("#POSCRAD li:eq(3)").css("display", "none");
+			}else{//POS刷卡返销
+				$("#POSCRAD li:eq(1)").css("display", "none");
+				$("#POSCRAD li:eq(2)").css("display", "");
+				$("#POSCRAD li:eq(3)").css("display", "");
+			}
+		},
+		
+		//组装页面展示的html
+		buildPosHtml:function(){
+			var popHtml = [];
+			//POS刷卡消费 begin 海科融通支付  
+			//popHtml.push('<span class="e_required">POS收费,请点击：</span>');
+			//popHtml.push('<button type="button" class="e_button-form" id="POS_CARD_BTN" name="POS_CARD_BTN"><i class="e_ico-send"></i><span>POS收费</span></button>');
+			//popHtml.push('<OBJECT id="HkPosC" CLASSID="CLSID:B9CCC53E-D611-40E7-B928-E64B79A33D99" style="display:none;" width="0" height="0" ></OBJECT>');
+			
+			popHtml.push('<ul class="ul"><li class="li"><span class="label"><span class="e_required"></span></span><span class="e_select"><span><span>');
+			popHtml.push('<select id="POST_TYPE_LIST"></select></span></span></span></li>');
+			popHtml.push('<li class="li" style="display:none"><span class="">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>');
+			popHtml.push('<button type="button" class="e_button-form" id="POS_PAYMENT_BTN"><i class="e_ico-send"></i><span>POS收费</span></button></li>');
+			popHtml.push('<li class="li" style="display:none"><span class="">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>');
+			popHtml.push('<button type="button" class="e_button-form" id="POS_BACKPAY_BTN"><i class="e_ico-send"></i><span>POS刷卡返销</span></button></li>');
+			popHtml.push('<li class="li" style="display:none"><label class="c_fn"><span><span jwcid="@Insert" value="可退费用返回原卡"/>可退费用返回原卡</span>');
+			popHtml.push('<input type="checkbox" class="e_checkbox" jwcid="@Checkbox" value="7" id="POS_RETURN" name="POS_RETURN" checked="true"/>');
+			popHtml.push('</label></li></ul>');
+			popHtml.push('<OBJECT id="HkPosC" CLASSID="CLSID:B9CCC53E-D611-40E7-B928-E64B79A33D99" style="display:none;" width="0" height="0" ></OBJECT>');
+			//POS刷卡消费 end 海科融通支付
+			return popHtml.join("");
+		},
+		
+		//POS刷卡支付
+		posPayFee:function(){
+			//如果刷卡失败的话则需要置灰确定按钮, 这样在切换支付类型的时候需要把确定按钮放开
+			//$("#FEEPOPUP_SUBMIT_BTN").attr("disabled", true);
+			
+			var posLogId = $.posTradeHFRT.POS_LOG_ID;
+			if(posLogId){
+				alert("不能重复POS刷卡!");
+				return false;
+			}
+
+			MessageBox.confirm("确认提示","您确定进行POS刷卡办理业务吗?", function(btn){
+				if(btn != "ok") {
+					return false;
+				}
+				$.posTradeHFRT.doPosTrade();
+			});
+		},
+		//刷卡消费
+		doPosTrade: function(){
+			var pos = $.posTradeHFRT.POS_CONFIGHK;
+			//新生成的LOG_ID
+			var tradePosId = pos.get("TRADE_POS_ID");
+			var ip = pos.get("PARA_CODE2");
+			var ipPort = pos.get("PARA_CODE3");
+			var baudRate = pos.get("PARA_CODE4");
+			var posPort = pos.get("PARA_CODE5");
+			var pos_trade_type_code = pos.get("TRADE_TYPE_CODE");
+			var pos_serial_number = pos.get("SERIAL_NUMBER");
+			var eparchyCode = pos.get("FEE_EPARCHY_CODE"); 
+			
+			//实缴费用
+			var payTotalFee = $.feeMgr.getTotalFee(1);  
+			//POS刷卡费用
+			var feeTotal = $('#PAY_TOTAL').html();
+			if(parseFloat(payTotalFee) == 0){
+				alert("POS金额不能为零");
+				return false;
+			}
+			if((parseFloat(payTotalFee))!=(parseFloat(feeTotal*100))){
+				alert("POS刷卡费用与总费用不相等!");
+				return false;
+			}
+			try{
+				var JunAct = document.getElementById("HkPosC");
+				if(JunAct != null){
+					var result = -1;
+					var orderNo=tradePosId;
+					
+					var busstype = $.posTradeHFRT.POS_CONFIGHK.get("BUSS_TYPE");
+					if(!busstype) busstype="1000";
+					result = JunAct.consume2(ip, ipPort, baudRate, posPort, orderNo, payTotalFee, busstype);//消费
+					//记录POS交易日志
+					var param = '&LOG_ID='+tradePosId +'&FEE='+payTotalFee+'&POS_TRADE_ID='+JunAct.sPosSeril+'&CARD_NO='+JunAct.sCard+
+			    		'&TRADING_DATE='+JunAct.sTrsDate+'&TRADING_TIME='+JunAct.sTrsTime+'&TRACKING_NO='+JunAct.sTrcNum+'&DEAL_FLAG='+result+
+			   			'&RESULT_CODE='+JunAct.sRtCode+'&OPER_TYPE=00'+'&TRADE_TYPE_CODE='+pos_trade_type_code+'&SERIAL_NUMBER='+pos_serial_number
+			   			+'&ROUTE_EPARCHY_CODE='+eparchyCode;
+					$.httphandler.get($.feeMgr.CLAZZ, "insertPosLog", param, 
+						null,
+						function(code, info, detail){
+							MessageBox.alert("错误提示","记录POS交易日志失败！",null, null, info, detail);
+						},{
+							dataType:"json",
+							simple:true,
+							async: false
+					});
+					if(result==0 && JunAct.sRtCode=="00"){
+					   //刷卡成功回传pos_log_id
+					   $.posTradeHFRT.POS_LOG_ID = tradePosId;
+					   $.cssubmit.setParam("TRADE_POS_LOGID", tradePosId);
+					   //刷卡成功,业务提交失败时使用
+					   $.posTradeHFRT.POS_CONFIGHK.put("TRADE_POS_LOGID",tradePosId);
+				       alert("刷卡操作成功！");
+				       return true;
+				    }else if(result!=0 || JunAct.sRtCode=="A1"){
+				       alert("刷卡操作失败！交易被取消");
+				       return false;
+				    }else if(result!=0 || JunAct.sRtCode=="A2"){
+				       alert("刷卡操作失败！交易失败");
+				       return false;
+				    }else if(result!=0 || JunAct.sRtCode=="A3"){
+				       alert("刷卡操作失败！无记录");
+				       return false;
+				    }else if(result!=0 || JunAct.sRtCode=="A4"){
+				       alert("刷卡操作失败！无交易");
+				       return false;
+				    }else if(result!=0 || JunAct.sRtCode=="A5"){
+				       alert("刷卡操作失败！打包错");
+				       return false;
+				    }else if(result!=0 || JunAct.sRtCode=="A6"){
+				       alert("刷卡操作失败！联接失败");
+				       return false;
+				    }else if(result!=0 || JunAct.sRtCode=="A7"){
+				       alert("刷卡操作失败！发包错误");
+				       return false;
+				    }else if(result!=0 || JunAct.sRtCode=="A8"){
+				       alert("刷卡操作失败！收包错误");
+				       return false;
+				    }else if(result!=0 || JunAct.sRtCode=="A9"){
+				       alert("刷卡操作失败！解包错误");
+				       return false;
+				    }else if(result!=0 || JunAct.sRtCode=="B1"){
+				       alert("刷卡操作失败！冲正失败");
+				       return false;
+				    }else if(result!=0 || JunAct.sRtCode=="B2"){
+				       alert("刷卡操作失败！不支持该交易");
+				       return false;
+				    }else if(result!=0 || JunAct.sRtCode=="B3"){
+				       alert("刷卡操作失败！无原始交易");
+				       return false;
+				    }else if(result!=0 || JunAct.sRtCode=="B4"){
+				       alert("刷卡操作失败！交易已被撤消");
+				       return false;
+				    }else if(result!=0 || JunAct.sRtCode=="B5"){
+				       alert("刷卡操作失败！原交易已退货");
+				       return false;
+				    }else if(result!=0 || JunAct.sRtCode=="B6"){
+				       alert("刷卡操作失败！刷卡错误");
+				       return false;
+				    }else if(result!=0 || JunAct.sRtCode=="B7"){
+				       alert("刷卡操作失败！终端未签到，请先签到");
+				       return false;
+				    }else if(result!=0 || JunAct.sRtCode=="B8"){
+				       alert("刷卡操作失败！交易日志满 请结算");
+				       return false;
+				    }else if(result!=0 || JunAct.sRtCode=="UK"){
+				       alert("刷卡操作失败！请查看POS提示");
+				       return false;
+				    }else{ 
+				       alert("刷卡操作失败！");
+				       return false;
+				    }
+				}else{
+					alert("控件HkPosC加载失败!");
+					return false;
+				}
+			}catch(e){
+			    var ss =e.message;
+				alert("error"+ss);
+			}	
+		},
+		
+		//POS刷卡返销,海科融通
+		posBackPayFee:function(){
+			var posLogId = $.posTradeHFRT.POS_LOG_ID;
+			if(posLogId){
+				alert("不能重复返销刷卡!");
+				return false;
+			}
+			
+			if(!$("#POS_RETURN").attr("checked")){
+				alert("未选择费用返回原卡,不能操作!");
+				return;
+			}
+			
+			MessageBox.confirm("提示信息","您确定POS刷卡返销业务吗？",function(btn){
+				if(btn=="cancel") return;
+				
+				var pos = $.posTradeHFRT.POS_CONFIGHK;
+				//新生成的LOG_ID
+				var tradePosId = pos.get("TRADE_POS_ID");
+				if(!tradePosId){
+					alert("返销的LOG_ID不能为空!");
+					return;
+				}
+				var posCancelFlag = pos.get("POSCANCELFLAG");
+				if(posCancelFlag && posCancelFlag == "0"){
+					alert("没有查找到刷卡日志,请确认!");
+					return;
+				}
+				
+				var ip = pos.get("PARA_CODE2");
+				var ipPort = pos.get("PARA_CODE3");
+				var baudRate = pos.get("PARA_CODE4");
+				var posPort = pos.get("PARA_CODE5");
+				var pos_trade_type_code = pos.get("TRADE_TYPE_CODE");
+				var pos_serial_number = pos.get("SERIAL_NUMBER");
+				var eparchyCode = pos.get("FEE_EPARCHY_CODE"); 
+				
+				var isToday = pos.get("IS_TODAY");
+				var postradeid = pos.get("POS_TRADE_ID");
+				//根据返销的order_id更新TF_B_POS_OPER_LOG返销那条记录
+				var tradeId = pos.get("TRADE_ID");
+				var rsrv_str2 = pos.get("RSRV_STR2");
+				var cancel_pos = pos.get("CANCEL_POS");
+				var audit_pos = pos.get("AUDITFLAG");
+				var trachingno = pos.get("TRACKING_NO");
+				var tradingdate = pos.get("TRADING_DATE");
+				var amount = pos.get("POS_FEE");
+				
+				if(!postradeid && !tradeId){
+					alert("该笔业务不是POS刷卡消费,不需要通过pos刷卡返销!");
+					return;
+				}
+				if(rsrv_str2=="CANCEL"){
+					alert("该笔POS缴费已被返销，不能重复返销!");
+					return;
+				}
+				if(cancel_pos == "0"){
+					alert("刷卡业务已超30天,不能POS刷卡返销!");
+					return;
+				}
+				if(audit_pos=="0"){
+					alert("该笔营销活动或合约计划取消未审核通过,不能进行POS刷卡返销!");
+					return;
+				}
+				
+				//实缴费用
+				var payTotalFee = $.feeMgr.getTotalFee(1);
+				try{
+					var JunAct = document.getElementById("HkPosC");
+					if(JunAct != null){
+						var result = -1;
+						var orderNo = tradePosId;
+						var oLogNo = trachingno;
+						var oDate = tradingdate;
+						var oSefNo = trachingno;
+						
+						var busstype = $.posTradeHFRT.POS_CONFIGHK.get("BUSS_TYPE");
+						if(!busstype) busstype="1000";
+						
+						if("1" == isToday){
+							result = JunAct.consumeCancle2(ip, ipPort, baudRate, posPort, orderNo, postradeid,busstype);//消费撤销
+							var logParam = '&LOG_ID='+tradePosId +'&FEE='+amount+'&POS_TRADE_ID='+JunAct.sPosSeril+
+						        '&CARD_NO='+JunAct.sCard+'&TRADING_DATE='+JunAct.sTrsDate+'&TRADING_TIME='+JunAct.sTrsTime+
+						        '&TRACKING_NO='+JunAct.sTrcNum+'&DEAL_FLAG='+result+'&RESULT_CODE='+JunAct.sRtCode+'&OPER_TYPE=01'
+						        +'&TRADE_POS_ID='+tradeId+'&TRADE_TYPE_CODE='+pos_trade_type_code+'&SERIAL_NUMBER='+pos_serial_number
+						        +'&ROUTE_EPARCHY_CODE='+eparchyCode+'&CANCEL_FLAG=1';
+						   $.httphandler.get($.feeMgr.CLAZZ, "insertPosCancelLog", logParam, 
+						   		function(){
+						   			//
+						   		},
+								function(code, info, detail){
+									MessageBox.alert("错误提示","记录POS返销交易日志失败！",null, null, info, detail);
+								},{
+									dataType:"json",
+									simple:true,
+									async: false
+							});     
+						}else{
+							//隔日返销
+							var posamt = pos.get("POSAMT");
+							MessageBox.confirm("提示信息","返回费用共"+posamt+"分到原卡，确定操作吗?",function(btn){
+								if(btn=="cancel") return false;
+								
+								result = JunAct.salesReturn2(ip, ipPort, baudRate, posPort,orderNo,posamt,oSefNo,oDate,busstype);//退货	
+								
+								var cancelLogparam = '&LOG_ID='+tradePosId +'&FEE='+amount+'&POS_TRADE_ID='+JunAct.sPosSeril+'&CARD_NO='
+									+JunAct.sCard+'&TRADING_DATE='+JunAct.sTrsDate+'&TRADING_TIME='+JunAct.sTrsTime+'&TRACKING_NO='
+									+JunAct.sTrcNum+'&DEAL_FLAG='+result+'&RESULT_CODE='+JunAct.sRtCode+'&OPER_TYPE=02'+'&TRADE_POS_ID='
+									+tradeId+'&TRADE_TYPE_CODE='+pos_trade_type_code+'&SERIAL_NUMBER='+pos_serial_number
+									+'&ROUTE_EPARCHY_CODE='+eparchyCode+'&CANCEL_FLAG=1';
+								$.httphandler.get($.feeMgr.CLAZZ, "insertPosCancelLog", logParam, 
+									function(){
+							   			//
+							   		},
+									function(code, info, detail){
+										MessageBox.alert("错误提示","记录POS返销交易日志失败！",null, null, info, detail);
+									},{
+										dataType:"json",
+										simple:true,
+										async: false
+								});	
+							});	
+						}
+						
+						if(result==0 && JunAct.sRtCode=="00"){
+						   $.posTradeHFRT.POS_LOG_ID = tradePosId;
+						   $.cssubmit.setParam("TRADE_POS_LOGID", tradePosId);
+						   //刷卡成功,业务提交失败时使用
+					  	   $.posTradeHFRT.POS_CONFIGHK.put("TRADE_POS_LOGID",tradePosId);
+					       alert("刷卡返销操作成功！");
+					       return true;
+					    }else if(result!=0 || JunAct.sRtCode=="A1"){
+					       alert("刷卡操作失败！交易被取消");
+					       return false;
+					    }else if(result!=0 || JunAct.sRtCode=="A2"){
+					       alert("刷卡操作失败！交易失败");
+					       return false;
+					    }else if(result!=0 || JunAct.sRtCode=="A3"){
+					       alert("刷卡操作失败！无记录");
+					       return false;
+					    }else if(result!=0 || JunAct.sRtCode=="A4"){
+					       alert("刷卡操作失败！无交易");
+					       return false;
+					    }else if(result!=0 || JunAct.sRtCode=="A5"){
+					       alert("刷卡操作失败！打包错");
+					       return false;
+					    }else if(result!=0 || JunAct.sRtCode=="A6"){
+					       alert("刷卡操作失败！联接失败");
+					       return false;
+					    }else if(result!=0 || JunAct.sRtCode=="A7"){
+					       alert("刷卡操作失败！发包错误");
+					       return false;
+					    }else if(result!=0 || JunAct.sRtCode=="A8"){
+					       alert("刷卡操作失败！收包错误");
+					       return false;
+					    }else if(result!=0 || JunAct.sRtCode=="A9"){
+					       alert("刷卡操作失败！解包错误");
+					       return false;
+					    }else if(result!=0 || JunAct.sRtCode=="B1"){
+					       alert("刷卡操作失败！冲正失败");
+					       return false;
+					    }else if(result!=0 || JunAct.sRtCode=="B2"){
+					       alert("刷卡操作失败！不支持该交易");
+					       return false;
+					    }else if(result!=0 || JunAct.sRtCode=="B3"){
+					       alert("刷卡操作失败！无原始交易");
+					       return false;
+					    }else if(result!=0 || JunAct.sRtCode=="B4"){
+					       alert("刷卡操作失败！交易已被撤消");
+					       return false;
+					    }else if(result!=0 || JunAct.sRtCode=="B5"){
+					       alert("刷卡操作失败！原交易已退货");
+					       return false;
+					    }else if(result!=0 || JunAct.sRtCode=="B6"){
+					       alert("刷卡操作失败！刷卡错误");
+					       return false;
+					    }else if(result!=0 || JunAct.sRtCode=="B7"){
+					       alert("刷卡操作失败！终端未签到，请先签到");
+					       return false;
+					    }else if(result!=0 || JunAct.sRtCode=="B8"){
+					       alert("刷卡操作失败！交易日志满 请结算");
+					       return false;
+					    }else if(result!=0 || JunAct.sRtCode=="UK"){
+					       alert("刷卡操作失败！请查看POS提示");
+					       return false;
+					    }else{ 
+					       alert("刷卡操作失败！");
+					       return false;
+					    }
+					}else{
+						alert("控件HkPosC加载失败");
+						return false;
+					}
+				}catch(e){
+				    var ss =e.message;
+					alert("error"+ss);
+				}
+				
+			});
+		}
+	}});
+})(Wade);
